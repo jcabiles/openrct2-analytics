@@ -1,0 +1,284 @@
+version: 2
+
+models:
+  - name: fct_cleaning_rule_count
+    description: >-
+      Answers the question, “how many rows did each cleaning rule keep, remove or change, and why?” Grain: one row per
+      cleaning rule per model that applies it, over the whole warehouse file (one data set per file). Key:
+      cleaning_rule_key. Every row says whether the game's data (cause source) or the pipeline's own rule (cause
+      transform) is behind it, gives a plain reason, and names the test or decision record that guards the rule. The
+      identity rows_in = rows_kept + rows_excluded holds on every row, but it is a real check on only two rows,
+      abandoned_branch for fct_park_month and exit_without_arrival; on the other rows that remove rows it holds by
+      construction, because the removed count is the difference of the two row counts, and a rule that changes values
+      keeps every row. The abandoned_branch count of int_ride_days__kept is the difference between the staged ride
+      readings and the kept ride days, so it also holds any readings collapsed to one per ride per game day (day_rank =
+      1); the committed sample has none. plugin_stats and weather_change have no repeat-delivery row because no model stages either type.
+      The last_reading_null count of int_ride_days__kept also holds days whose null comes from a ride occupancy
+      ending, and a same-day collapse can hide a session-end null inside a day sum. A ride day counts only when no later kept
+      reading exists for its ride and session, so a profit the game itself sent as null (a never-opened stall's lifetime
+      profit) is not counted. Counts are recomputed on every
+      build because the labels they rest on are (ADR 0024). The table is not exported and has no exposure. Not built
+      yet, so not counted here: the collapse of a button click run (ADR 0006), which would get a row on the staging
+      model that collapses it; the game actions lost when a full plugin buffer drops them, recorded in plugin_stats
+      `game_actions_dropped_*` fields, which no model reconciles yet; and the converter's
+      dropped malformed lines and sequence audit, which the converter counts outside dbt. Unit: rows in every count
+      column; no clock.
+    config:
+      contract:
+        enforced: true
+    meta:
+      expected_min_rows: 1
+    data_tests:
+      - rows_on_sample:
+          arguments:
+            expected: 21
+    columns:
+      - name: cleaning_rule_key
+        data_type: varchar
+        description: "The rule name, a pipe and the model name; the key; no unit; no clock."
+        data_tests:
+          - unique
+          - not_null
+      - name: rule_name
+        data_type: varchar
+        description: "The cleaning rule: repeat_delivery, abandoned_branch, last_reading_null, placeholder_null_minus_1, placeholder_null_255, placeholder_null_1275, placeholder_null_65535 or exit_without_arrival; no unit; no clock."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - repeat_delivery
+                  - abandoned_branch
+                  - last_reading_null
+                  - placeholder_null_minus_1
+                  - placeholder_null_255
+                  - placeholder_null_1275
+                  - placeholder_null_65535
+                  - exit_without_arrival
+      - name: model_name
+        data_type: varchar
+        description: "The model whose SQL applies the rule; for abandoned statements it is fct_park_month, which drops them from the labeled statements; no unit; no clock."
+        data_tests: [not_null]
+      - name: cause
+        data_type: varchar
+        description: "Who is behind the rule: source when the game's data forces it, transform when the pipeline's own rule does; no unit; no clock."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['source', 'transform']
+      - name: rows_in
+        data_type: bigint
+        description: "Rows the rule saw; unit: rows; no clock."
+        data_tests: [not_null]
+      - name: rows_kept
+        data_type: bigint
+        description: "Rows that passed the rule; equals rows_in for a rule that changes values; unit: rows; no clock."
+        data_tests: [not_null]
+      - name: rows_excluded
+        data_type: bigint
+        description: "Rows the rule removed; 0 for a rule that changes values; unit: rows; no clock."
+        data_tests: [not_null]
+      - name: rows_changed
+        data_type: bigint
+        description: "Kept rows in which the rule set a value to null; 0 for a rule that removes rows; unit: rows; no clock."
+        data_tests: [not_null]
+      - name: reason
+        data_type: varchar
+        description: "One or two plain sentences saying what the rule does and why; no unit; no clock."
+        data_tests: [not_null]
+      - name: guarded_by
+        data_type: varchar
+        description: "The test or decision record (ADR) that guards the rule; no unit; no clock."
+        data_tests: [not_null]
+
+unit_tests:
+  - name: fct_cleaning_rule_count_counts_each_or_clause_of_rows_15_to_17
+    description: >-
+      A ride day counts under last_reading_null when it is a ride's last kept reading and only its customers change is
+      null, and again when only its profit is null; a ride day with a null profit and a later kept reading of the same
+      ride and session is not counted (a profit the game sent as null); under placeholder_null_minus_1 when only intensity is -1 and when only nausea is -1; and under
+      placeholder_null_255 when only shop_item is 255 while shop_item_secondary is 254. Each OR clause is fed by
+      its own row, so deleting any one clause changes a count. Repeat landing rows (same event ID, other line) with
+      -1, 255, 1275 or 65535 and no matching staged delivery are not counted under their respective placeholder
+      rules. Every other input is empty.
+    model: fct_cleaning_rule_count
+    given:
+      - input: ref('stg_envelope')
+        format: sql
+        rows: |
+          select cast('ride_snapshot' as varchar) as event_type where false
+      - input: source('landing', 'ride_snapshot')
+        format: sql
+        rows: |
+          select
+            cast('e1' as varchar) as event_id,
+            cast('a.jsonl' as varchar) as _raw_file,
+            cast(1 as bigint) as _raw_line,
+            cast(500 as integer) as excitement_hundredths,
+            cast(-1 as integer) as intensity_hundredths,
+            cast(300 as integer) as nausea_hundredths,
+            cast(10 as integer) as shop_item,
+            cast(11 as integer) as shop_item_secondary,
+            cast(70 as integer) as satisfaction_pct
+          union all
+          select
+            cast('e2' as varchar) as event_id,
+            cast('a.jsonl' as varchar) as _raw_file,
+            cast(2 as bigint) as _raw_line,
+            cast(500 as integer) as excitement_hundredths,
+            cast(400 as integer) as intensity_hundredths,
+            cast(-1 as integer) as nausea_hundredths,
+            cast(10 as integer) as shop_item,
+            cast(11 as integer) as shop_item_secondary,
+            cast(70 as integer) as satisfaction_pct
+          union all
+          select
+            cast('e3' as varchar) as event_id,
+            cast('a.jsonl' as varchar) as _raw_file,
+            cast(3 as bigint) as _raw_line,
+            cast(500 as integer) as excitement_hundredths,
+            cast(400 as integer) as intensity_hundredths,
+            cast(300 as integer) as nausea_hundredths,
+            cast(255 as integer) as shop_item,
+            cast(254 as integer) as shop_item_secondary,
+            cast(70 as integer) as satisfaction_pct
+          union all
+          select
+            cast('e1' as varchar) as event_id,
+            cast('a.jsonl' as varchar) as _raw_file,
+            cast(4 as bigint) as _raw_line,
+            cast(500 as integer) as excitement_hundredths,
+            cast(-1 as integer) as intensity_hundredths,
+            cast(300 as integer) as nausea_hundredths,
+            cast(10 as integer) as shop_item,
+            cast(11 as integer) as shop_item_secondary,
+            cast(70 as integer) as satisfaction_pct
+          union all
+          select
+            cast('e3' as varchar) as event_id,
+            cast('a.jsonl' as varchar) as _raw_file,
+            cast(5 as bigint) as _raw_line,
+            cast(500 as integer) as excitement_hundredths,
+            cast(400 as integer) as intensity_hundredths,
+            cast(300 as integer) as nausea_hundredths,
+            cast(255 as integer) as shop_item,
+            cast(11 as integer) as shop_item_secondary,
+            cast(70 as integer) as satisfaction_pct
+          union all
+          select
+            cast('e2' as varchar) as event_id,
+            cast('a.jsonl' as varchar) as _raw_file,
+            cast(6 as bigint) as _raw_line,
+            cast(500 as integer) as excitement_hundredths,
+            cast(400 as integer) as intensity_hundredths,
+            cast(300 as integer) as nausea_hundredths,
+            cast(10 as integer) as shop_item,
+            cast(11 as integer) as shop_item_secondary,
+            cast(1275 as integer) as satisfaction_pct
+      - input: source('landing', 'guest_snapshot')
+        format: sql
+        rows: |
+          select
+            cast('g1' as varchar) as event_id,
+            cast('a.jsonl' as varchar) as _raw_file,
+            cast(2 as bigint) as _raw_line,
+            cast(65535 as integer) as thought_item
+      - input: ref('stg_ride_snapshot')
+        format: sql
+        rows: |
+          select cast('e1' as varchar) as event_id, cast('a.jsonl' as varchar) as _raw_file, cast(1 as bigint) as _raw_line
+          union all
+          select cast('e2' as varchar) as event_id, cast('a.jsonl' as varchar) as _raw_file, cast(2 as bigint) as _raw_line
+          union all
+          select cast('e3' as varchar) as event_id, cast('a.jsonl' as varchar) as _raw_file, cast(3 as bigint) as _raw_line
+      - input: ref('int_ride_days__kept')
+        format: sql
+        rows: |
+          select cast('r1' as varchar) as ride_key, cast('s' as varchar) as session_id, cast(100 as bigint) as game_ticks_elapsed, cast(null as bigint) as customers_increase, cast(10.5 as decimal(18, 2)) as profit_usd
+          union all
+          select cast('r2' as varchar), cast('s' as varchar), cast(100 as bigint), cast(5 as bigint), cast(null as decimal(18, 2))
+          union all
+          select cast('r3' as varchar), cast('s' as varchar), cast(100 as bigint), cast(3 as bigint), cast(null as decimal(18, 2))
+          union all
+          select cast('r3' as varchar), cast('s' as varchar), cast(200 as bigint), cast(4 as bigint), cast(1.5 as decimal(18, 2))
+      - input: ref('stg_finance_month')
+        format: sql
+        rows: |
+          select cast(1 as integer) as row_marker where false
+      - input: ref('stg_game_action')
+        format: sql
+        rows: |
+          select cast(1 as integer) as row_marker where false
+      - input: ref('stg_guest_arrived')
+        format: sql
+        rows: |
+          select cast('s' as varchar) as session_id, cast('g' as varchar) as guest_key where false
+      - input: ref('stg_guest_boarded')
+        format: sql
+        rows: |
+          select cast(1 as integer) as row_marker where false
+      - input: ref('stg_guest_left')
+        format: sql
+        rows: |
+          select cast('s' as varchar) as session_id, cast('g' as varchar) as guest_key where false
+      - input: ref('stg_guest_refused')
+        format: sql
+        rows: |
+          select cast(1 as integer) as row_marker where false
+      - input: ref('stg_guest_snapshot')
+        format: sql
+        rows: |
+          select cast('g1' as varchar) as event_id, cast('a.jsonl' as varchar) as _raw_file, cast(1 as bigint) as _raw_line
+      - input: ref('stg_park_snapshot')
+        format: sql
+        rows: |
+          select cast(1 as integer) as row_marker where false
+      - input: ref('stg_save_written')
+        format: sql
+        rows: |
+          select cast(1 as integer) as row_marker where false
+      - input: ref('stg_session_start')
+        format: sql
+        rows: |
+          select cast(1 as integer) as row_marker where false
+      - input: ref('int_park_days__kept')
+        format: sql
+        rows: |
+          select cast(1 as bigint) as admissions_increase where false
+      - input: ref('int_statements__labeled')
+        format: sql
+        rows: |
+          select cast('kept' as varchar) as timeline_status where false
+      - input: ref('fct_park_month')
+        format: sql
+        rows: |
+          select cast(1 as integer) as row_marker where false
+      - input: ref('int_guest_stays')
+        format: sql
+        rows: |
+          select cast(true as boolean) as is_open where false
+    expect:
+      format: dict
+      rows:
+        - {cleaning_rule_key: 'repeat_delivery|stg_finance_month', rows_in: 0, rows_changed: 0}
+        - {cleaning_rule_key: 'repeat_delivery|stg_game_action', rows_in: 0, rows_changed: 0}
+        - {cleaning_rule_key: 'repeat_delivery|stg_guest_arrived', rows_in: 0, rows_changed: 0}
+        - {cleaning_rule_key: 'repeat_delivery|stg_guest_boarded', rows_in: 0, rows_changed: 0}
+        - {cleaning_rule_key: 'repeat_delivery|stg_guest_left', rows_in: 0, rows_changed: 0}
+        - {cleaning_rule_key: 'repeat_delivery|stg_guest_refused', rows_in: 0, rows_changed: 0}
+        - {cleaning_rule_key: 'repeat_delivery|stg_guest_snapshot', rows_in: 0, rows_changed: 0}
+        - {cleaning_rule_key: 'repeat_delivery|stg_park_snapshot', rows_in: 0, rows_changed: 0}
+        - {cleaning_rule_key: 'repeat_delivery|stg_ride_snapshot', rows_in: 0, rows_changed: 0}
+        - {cleaning_rule_key: 'repeat_delivery|stg_save_written', rows_in: 0, rows_changed: 0}
+        - {cleaning_rule_key: 'repeat_delivery|stg_session_start', rows_in: 0, rows_changed: 0}
+        - {cleaning_rule_key: 'abandoned_branch|int_park_days__kept', rows_in: 0, rows_changed: 0}
+        - {cleaning_rule_key: 'abandoned_branch|int_ride_days__kept', rows_in: 3, rows_changed: 0}
+        - {cleaning_rule_key: 'abandoned_branch|fct_park_month', rows_in: 0, rows_changed: 0}
+        - {cleaning_rule_key: 'last_reading_null|int_park_days__kept', rows_in: 0, rows_changed: 0}
+        - {cleaning_rule_key: 'last_reading_null|int_ride_days__kept', rows_in: 4, rows_changed: 2}
+        - {cleaning_rule_key: 'placeholder_null_minus_1|stg_ride_snapshot', rows_in: 3, rows_changed: 2}
+        - {cleaning_rule_key: 'placeholder_null_255|stg_ride_snapshot', rows_in: 3, rows_changed: 1}
+        - {cleaning_rule_key: 'placeholder_null_1275|stg_ride_snapshot', rows_in: 3, rows_changed: 0}
+        - {cleaning_rule_key: 'placeholder_null_65535|stg_guest_snapshot', rows_in: 1, rows_changed: 0}
+        - {cleaning_rule_key: 'exit_without_arrival|int_guest_stays', rows_in: 0, rows_changed: 0}

@@ -1,0 +1,253 @@
+version: 2
+
+models:
+  - name: int_park_registry__history
+    description: >-
+      Answers which registry delivery was the latest word on each park on any date, so a game date can be turned
+      into a company date as the registry stood then, and a corrected start year does not erase the earlier one.
+      Grain: one row per feed row, key park_id with delivery_file; two rows for one park in one file are both
+      kept and share an interval, even when their delivered_on cells differ. A delivery is a file. Deliveries
+      are ordered per park by the date in the file name, then the sequence in the file name, and derived on
+      every build with window functions; the delivered_on cell never orders them. The interval is half-open: a row applies on date d
+      when valid_from <= d < valid_to, and a null valid_to means the delivery is current. A same-day correction
+      leaves the earlier delivery an empty interval. Files whose names do not match
+      park_registry_<YYYY-MM-DD>_<NN>.csv, or whose sequence is 00, are left out and a warn test names them. The model has no unit;
+      clock: wall-clock delivery date, not a company date.
+    meta:
+      park_registry: history
+      expected_min_rows: 1
+    data_tests:
+      - unique:
+          column_name: "park_id || '|' || delivery_file"
+          config:
+            severity: warn
+    columns:
+      - name: park_id
+        description: "The park's identifier, the same text the plugin sends; no unit; no clock."
+        data_tests: [not_null]
+      - name: company_start_year
+        description: "Company calendar year of the park's first game year, as this delivery stated it; unit: year; clock: company date."
+      - name: game_year_origin
+        description: "Game year that counts as the park's first company year, as this delivery stated it; unit: game year; clock: game."
+      - name: data_set
+        description: "Data set the row belongs to, rehearsal or company; text; no unit; no clock."
+      - name: note
+        description: "Free text from the delivery, may be empty; no unit; no clock."
+      - name: delivered_on
+        description: "Calendar date of the delivery as the row states it, no time; no unit; clock: wall-clock delivery date."
+        data_tests: [not_null]
+      - name: delivery_file
+        description: "Path of the delivery file as the folder was globbed, relative on dev and ci, absolute in a publish; text; no unit; no clock."
+        data_tests: [not_null]
+      - name: file_name
+        description: "Base name of the delivery file, never a path; text; no unit; no clock."
+        data_tests: [not_null]
+      - name: file_date
+        description: "Date written in the file name as YYYY-MM-DD text, not cast, the name's shape is checked but not the calendar, so a name with an impossible date fails the build at the date cast in valid_from; no unit; clock: wall-clock delivery date."
+        data_tests: [not_null]
+      - name: file_sequence
+        description: "Two-digit sequence in the file name, 1 to 99, ordering deliveries of one day; unit: delivery number; no clock."
+        data_tests: [not_null]
+      - name: valid_from
+        description: "First date this delivery applies, the date in its file name, inclusive; no unit; clock: wall-clock delivery date."
+        data_tests: [not_null]
+      - name: valid_to
+        description: "File name date of the park's next distinct delivery, exclusive, null while this delivery is current; no unit; clock: wall-clock delivery date."
+      - name: is_current
+        description: "True where valid_to is null, the park's latest delivery; boolean, no unit; no clock."
+        data_tests: [not_null]
+
+unit_tests:
+  - name: int_park_registry__history_keeps_a_correction_and_closes_the_first
+    description: It proves a later delivery restating Park 2 with an earlier start year keeps both rows and closes the first at the correction's date.
+    model: int_park_registry__history
+    given:
+      - input: ref('stg_park_registry')
+        format: sql
+        rows: |
+          select cast('park2' as varchar) as park_id, cast(2004 as integer) as company_start_year, cast(3 as integer) as game_year_origin, cast('rehearsal' as varchar) as data_set, cast('first' as varchar) as note, cast('2026-10-10' as date) as delivered_on, cast('data/park_registry_2026-10-10_01.csv' as varchar) as delivery_file
+          union all
+          select cast('park2' as varchar) as park_id, cast(2003 as integer) as company_start_year, cast(5 as integer) as game_year_origin, cast('rehearsal' as varchar) as data_set, cast('correction' as varchar) as note, cast('2026-10-12' as date) as delivered_on, cast('data/park_registry_2026-10-12_01.csv' as varchar) as delivery_file
+    expect:
+      rows:
+        - {company_start_year: 2004, valid_from: '2026-10-10', valid_to: '2026-10-12', is_current: false}
+        - {company_start_year: 2003, valid_from: '2026-10-12', valid_to: null, is_current: true}
+  - name: int_park_registry__history_orders_same_day_deliveries_by_sequence
+    description: It proves twelve parks, each with three deliveries on one day listed out of order and in different folders, are ordered by the sequence in the file name, so each earlier one leaves an empty interval and _03 is current.
+    model: int_park_registry__history
+    given:
+      - input: ref('stg_park_registry')
+        format: sql
+        rows: |
+          select cast('park30' as varchar) as park_id, cast(3003 as integer) as company_start_year, cast(23 as integer) as game_year_origin, cast('rehearsal' as varchar) as data_set, cast('file 3' as varchar) as note, cast('2026-10-11' as date) as delivered_on, cast('z/park_registry_2026-10-11_03.csv' as varchar) as delivery_file
+          union all
+          select cast('park30' as varchar) as park_id, cast(3001 as integer) as company_start_year, cast(21 as integer) as game_year_origin, cast('rehearsal' as varchar) as data_set, cast('file 1' as varchar) as note, cast('2026-10-11' as date) as delivered_on, cast('y/park_registry_2026-10-11_01.csv' as varchar) as delivery_file
+          union all
+          select cast('park30' as varchar) as park_id, cast(3002 as integer) as company_start_year, cast(22 as integer) as game_year_origin, cast('rehearsal' as varchar) as data_set, cast('file 2' as varchar) as note, cast('2026-10-11' as date) as delivered_on, cast('x/park_registry_2026-10-11_02.csv' as varchar) as delivery_file
+          union all
+          select cast('park31' as varchar) as park_id, cast(3012 as integer) as company_start_year, cast(22 as integer) as game_year_origin, cast('rehearsal' as varchar) as data_set, cast('file 2' as varchar) as note, cast('2026-10-11' as date) as delivered_on, cast('z/park_registry_2026-10-11_02.csv' as varchar) as delivery_file
+          union all
+          select cast('park31' as varchar) as park_id, cast(3013 as integer) as company_start_year, cast(23 as integer) as game_year_origin, cast('rehearsal' as varchar) as data_set, cast('file 3' as varchar) as note, cast('2026-10-11' as date) as delivered_on, cast('y/park_registry_2026-10-11_03.csv' as varchar) as delivery_file
+          union all
+          select cast('park31' as varchar) as park_id, cast(3011 as integer) as company_start_year, cast(21 as integer) as game_year_origin, cast('rehearsal' as varchar) as data_set, cast('file 1' as varchar) as note, cast('2026-10-11' as date) as delivered_on, cast('x/park_registry_2026-10-11_01.csv' as varchar) as delivery_file
+          union all
+          select cast('park32' as varchar) as park_id, cast(3023 as integer) as company_start_year, cast(23 as integer) as game_year_origin, cast('rehearsal' as varchar) as data_set, cast('file 3' as varchar) as note, cast('2026-10-11' as date) as delivered_on, cast('z/park_registry_2026-10-11_03.csv' as varchar) as delivery_file
+          union all
+          select cast('park32' as varchar) as park_id, cast(3021 as integer) as company_start_year, cast(21 as integer) as game_year_origin, cast('rehearsal' as varchar) as data_set, cast('file 1' as varchar) as note, cast('2026-10-11' as date) as delivered_on, cast('y/park_registry_2026-10-11_01.csv' as varchar) as delivery_file
+          union all
+          select cast('park32' as varchar) as park_id, cast(3022 as integer) as company_start_year, cast(22 as integer) as game_year_origin, cast('rehearsal' as varchar) as data_set, cast('file 2' as varchar) as note, cast('2026-10-11' as date) as delivered_on, cast('x/park_registry_2026-10-11_02.csv' as varchar) as delivery_file
+          union all
+          select cast('park33' as varchar) as park_id, cast(3032 as integer) as company_start_year, cast(22 as integer) as game_year_origin, cast('rehearsal' as varchar) as data_set, cast('file 2' as varchar) as note, cast('2026-10-11' as date) as delivered_on, cast('z/park_registry_2026-10-11_02.csv' as varchar) as delivery_file
+          union all
+          select cast('park33' as varchar) as park_id, cast(3033 as integer) as company_start_year, cast(23 as integer) as game_year_origin, cast('rehearsal' as varchar) as data_set, cast('file 3' as varchar) as note, cast('2026-10-11' as date) as delivered_on, cast('y/park_registry_2026-10-11_03.csv' as varchar) as delivery_file
+          union all
+          select cast('park33' as varchar) as park_id, cast(3031 as integer) as company_start_year, cast(21 as integer) as game_year_origin, cast('rehearsal' as varchar) as data_set, cast('file 1' as varchar) as note, cast('2026-10-11' as date) as delivered_on, cast('x/park_registry_2026-10-11_01.csv' as varchar) as delivery_file
+          union all
+          select cast('park34' as varchar) as park_id, cast(3043 as integer) as company_start_year, cast(23 as integer) as game_year_origin, cast('rehearsal' as varchar) as data_set, cast('file 3' as varchar) as note, cast('2026-10-11' as date) as delivered_on, cast('z/park_registry_2026-10-11_03.csv' as varchar) as delivery_file
+          union all
+          select cast('park34' as varchar) as park_id, cast(3041 as integer) as company_start_year, cast(21 as integer) as game_year_origin, cast('rehearsal' as varchar) as data_set, cast('file 1' as varchar) as note, cast('2026-10-11' as date) as delivered_on, cast('y/park_registry_2026-10-11_01.csv' as varchar) as delivery_file
+          union all
+          select cast('park34' as varchar) as park_id, cast(3042 as integer) as company_start_year, cast(22 as integer) as game_year_origin, cast('rehearsal' as varchar) as data_set, cast('file 2' as varchar) as note, cast('2026-10-11' as date) as delivered_on, cast('x/park_registry_2026-10-11_02.csv' as varchar) as delivery_file
+          union all
+          select cast('park35' as varchar) as park_id, cast(3052 as integer) as company_start_year, cast(22 as integer) as game_year_origin, cast('rehearsal' as varchar) as data_set, cast('file 2' as varchar) as note, cast('2026-10-11' as date) as delivered_on, cast('z/park_registry_2026-10-11_02.csv' as varchar) as delivery_file
+          union all
+          select cast('park35' as varchar) as park_id, cast(3053 as integer) as company_start_year, cast(23 as integer) as game_year_origin, cast('rehearsal' as varchar) as data_set, cast('file 3' as varchar) as note, cast('2026-10-11' as date) as delivered_on, cast('y/park_registry_2026-10-11_03.csv' as varchar) as delivery_file
+          union all
+          select cast('park35' as varchar) as park_id, cast(3051 as integer) as company_start_year, cast(21 as integer) as game_year_origin, cast('rehearsal' as varchar) as data_set, cast('file 1' as varchar) as note, cast('2026-10-11' as date) as delivered_on, cast('x/park_registry_2026-10-11_01.csv' as varchar) as delivery_file
+          union all
+          select cast('park36' as varchar) as park_id, cast(3063 as integer) as company_start_year, cast(23 as integer) as game_year_origin, cast('rehearsal' as varchar) as data_set, cast('file 3' as varchar) as note, cast('2026-10-11' as date) as delivered_on, cast('z/park_registry_2026-10-11_03.csv' as varchar) as delivery_file
+          union all
+          select cast('park36' as varchar) as park_id, cast(3061 as integer) as company_start_year, cast(21 as integer) as game_year_origin, cast('rehearsal' as varchar) as data_set, cast('file 1' as varchar) as note, cast('2026-10-11' as date) as delivered_on, cast('y/park_registry_2026-10-11_01.csv' as varchar) as delivery_file
+          union all
+          select cast('park36' as varchar) as park_id, cast(3062 as integer) as company_start_year, cast(22 as integer) as game_year_origin, cast('rehearsal' as varchar) as data_set, cast('file 2' as varchar) as note, cast('2026-10-11' as date) as delivered_on, cast('x/park_registry_2026-10-11_02.csv' as varchar) as delivery_file
+          union all
+          select cast('park37' as varchar) as park_id, cast(3072 as integer) as company_start_year, cast(22 as integer) as game_year_origin, cast('rehearsal' as varchar) as data_set, cast('file 2' as varchar) as note, cast('2026-10-11' as date) as delivered_on, cast('z/park_registry_2026-10-11_02.csv' as varchar) as delivery_file
+          union all
+          select cast('park37' as varchar) as park_id, cast(3073 as integer) as company_start_year, cast(23 as integer) as game_year_origin, cast('rehearsal' as varchar) as data_set, cast('file 3' as varchar) as note, cast('2026-10-11' as date) as delivered_on, cast('y/park_registry_2026-10-11_03.csv' as varchar) as delivery_file
+          union all
+          select cast('park37' as varchar) as park_id, cast(3071 as integer) as company_start_year, cast(21 as integer) as game_year_origin, cast('rehearsal' as varchar) as data_set, cast('file 1' as varchar) as note, cast('2026-10-11' as date) as delivered_on, cast('x/park_registry_2026-10-11_01.csv' as varchar) as delivery_file
+          union all
+          select cast('park38' as varchar) as park_id, cast(3083 as integer) as company_start_year, cast(23 as integer) as game_year_origin, cast('rehearsal' as varchar) as data_set, cast('file 3' as varchar) as note, cast('2026-10-11' as date) as delivered_on, cast('z/park_registry_2026-10-11_03.csv' as varchar) as delivery_file
+          union all
+          select cast('park38' as varchar) as park_id, cast(3081 as integer) as company_start_year, cast(21 as integer) as game_year_origin, cast('rehearsal' as varchar) as data_set, cast('file 1' as varchar) as note, cast('2026-10-11' as date) as delivered_on, cast('y/park_registry_2026-10-11_01.csv' as varchar) as delivery_file
+          union all
+          select cast('park38' as varchar) as park_id, cast(3082 as integer) as company_start_year, cast(22 as integer) as game_year_origin, cast('rehearsal' as varchar) as data_set, cast('file 2' as varchar) as note, cast('2026-10-11' as date) as delivered_on, cast('x/park_registry_2026-10-11_02.csv' as varchar) as delivery_file
+          union all
+          select cast('park39' as varchar) as park_id, cast(3092 as integer) as company_start_year, cast(22 as integer) as game_year_origin, cast('rehearsal' as varchar) as data_set, cast('file 2' as varchar) as note, cast('2026-10-11' as date) as delivered_on, cast('z/park_registry_2026-10-11_02.csv' as varchar) as delivery_file
+          union all
+          select cast('park39' as varchar) as park_id, cast(3093 as integer) as company_start_year, cast(23 as integer) as game_year_origin, cast('rehearsal' as varchar) as data_set, cast('file 3' as varchar) as note, cast('2026-10-11' as date) as delivered_on, cast('y/park_registry_2026-10-11_03.csv' as varchar) as delivery_file
+          union all
+          select cast('park39' as varchar) as park_id, cast(3091 as integer) as company_start_year, cast(21 as integer) as game_year_origin, cast('rehearsal' as varchar) as data_set, cast('file 1' as varchar) as note, cast('2026-10-11' as date) as delivered_on, cast('x/park_registry_2026-10-11_01.csv' as varchar) as delivery_file
+          union all
+          select cast('park40' as varchar) as park_id, cast(3103 as integer) as company_start_year, cast(23 as integer) as game_year_origin, cast('rehearsal' as varchar) as data_set, cast('file 3' as varchar) as note, cast('2026-10-11' as date) as delivered_on, cast('z/park_registry_2026-10-11_03.csv' as varchar) as delivery_file
+          union all
+          select cast('park40' as varchar) as park_id, cast(3101 as integer) as company_start_year, cast(21 as integer) as game_year_origin, cast('rehearsal' as varchar) as data_set, cast('file 1' as varchar) as note, cast('2026-10-11' as date) as delivered_on, cast('y/park_registry_2026-10-11_01.csv' as varchar) as delivery_file
+          union all
+          select cast('park40' as varchar) as park_id, cast(3102 as integer) as company_start_year, cast(22 as integer) as game_year_origin, cast('rehearsal' as varchar) as data_set, cast('file 2' as varchar) as note, cast('2026-10-11' as date) as delivered_on, cast('x/park_registry_2026-10-11_02.csv' as varchar) as delivery_file
+          union all
+          select cast('park41' as varchar) as park_id, cast(3112 as integer) as company_start_year, cast(22 as integer) as game_year_origin, cast('rehearsal' as varchar) as data_set, cast('file 2' as varchar) as note, cast('2026-10-11' as date) as delivered_on, cast('z/park_registry_2026-10-11_02.csv' as varchar) as delivery_file
+          union all
+          select cast('park41' as varchar) as park_id, cast(3113 as integer) as company_start_year, cast(23 as integer) as game_year_origin, cast('rehearsal' as varchar) as data_set, cast('file 3' as varchar) as note, cast('2026-10-11' as date) as delivered_on, cast('y/park_registry_2026-10-11_03.csv' as varchar) as delivery_file
+          union all
+          select cast('park41' as varchar) as park_id, cast(3111 as integer) as company_start_year, cast(21 as integer) as game_year_origin, cast('rehearsal' as varchar) as data_set, cast('file 1' as varchar) as note, cast('2026-10-11' as date) as delivered_on, cast('x/park_registry_2026-10-11_01.csv' as varchar) as delivery_file
+    expect:
+      rows:
+        - {company_start_year: 3001, valid_from: '2026-10-11', valid_to: '2026-10-11', is_current: false}
+        - {company_start_year: 3002, valid_from: '2026-10-11', valid_to: '2026-10-11', is_current: false}
+        - {company_start_year: 3003, valid_from: '2026-10-11', valid_to: null, is_current: true}
+        - {company_start_year: 3011, valid_from: '2026-10-11', valid_to: '2026-10-11', is_current: false}
+        - {company_start_year: 3012, valid_from: '2026-10-11', valid_to: '2026-10-11', is_current: false}
+        - {company_start_year: 3013, valid_from: '2026-10-11', valid_to: null, is_current: true}
+        - {company_start_year: 3021, valid_from: '2026-10-11', valid_to: '2026-10-11', is_current: false}
+        - {company_start_year: 3022, valid_from: '2026-10-11', valid_to: '2026-10-11', is_current: false}
+        - {company_start_year: 3023, valid_from: '2026-10-11', valid_to: null, is_current: true}
+        - {company_start_year: 3031, valid_from: '2026-10-11', valid_to: '2026-10-11', is_current: false}
+        - {company_start_year: 3032, valid_from: '2026-10-11', valid_to: '2026-10-11', is_current: false}
+        - {company_start_year: 3033, valid_from: '2026-10-11', valid_to: null, is_current: true}
+        - {company_start_year: 3041, valid_from: '2026-10-11', valid_to: '2026-10-11', is_current: false}
+        - {company_start_year: 3042, valid_from: '2026-10-11', valid_to: '2026-10-11', is_current: false}
+        - {company_start_year: 3043, valid_from: '2026-10-11', valid_to: null, is_current: true}
+        - {company_start_year: 3051, valid_from: '2026-10-11', valid_to: '2026-10-11', is_current: false}
+        - {company_start_year: 3052, valid_from: '2026-10-11', valid_to: '2026-10-11', is_current: false}
+        - {company_start_year: 3053, valid_from: '2026-10-11', valid_to: null, is_current: true}
+        - {company_start_year: 3061, valid_from: '2026-10-11', valid_to: '2026-10-11', is_current: false}
+        - {company_start_year: 3062, valid_from: '2026-10-11', valid_to: '2026-10-11', is_current: false}
+        - {company_start_year: 3063, valid_from: '2026-10-11', valid_to: null, is_current: true}
+        - {company_start_year: 3071, valid_from: '2026-10-11', valid_to: '2026-10-11', is_current: false}
+        - {company_start_year: 3072, valid_from: '2026-10-11', valid_to: '2026-10-11', is_current: false}
+        - {company_start_year: 3073, valid_from: '2026-10-11', valid_to: null, is_current: true}
+        - {company_start_year: 3081, valid_from: '2026-10-11', valid_to: '2026-10-11', is_current: false}
+        - {company_start_year: 3082, valid_from: '2026-10-11', valid_to: '2026-10-11', is_current: false}
+        - {company_start_year: 3083, valid_from: '2026-10-11', valid_to: null, is_current: true}
+        - {company_start_year: 3091, valid_from: '2026-10-11', valid_to: '2026-10-11', is_current: false}
+        - {company_start_year: 3092, valid_from: '2026-10-11', valid_to: '2026-10-11', is_current: false}
+        - {company_start_year: 3093, valid_from: '2026-10-11', valid_to: null, is_current: true}
+        - {company_start_year: 3101, valid_from: '2026-10-11', valid_to: '2026-10-11', is_current: false}
+        - {company_start_year: 3102, valid_from: '2026-10-11', valid_to: '2026-10-11', is_current: false}
+        - {company_start_year: 3103, valid_from: '2026-10-11', valid_to: null, is_current: true}
+        - {company_start_year: 3111, valid_from: '2026-10-11', valid_to: '2026-10-11', is_current: false}
+        - {company_start_year: 3112, valid_from: '2026-10-11', valid_to: '2026-10-11', is_current: false}
+        - {company_start_year: 3113, valid_from: '2026-10-11', valid_to: null, is_current: true}
+  - name: int_park_registry__history_gives_two_rows_of_one_file_one_interval
+    description: It proves two rows for one park in one file both stay and share the interval, and both close when a later delivery arrives.
+    model: int_park_registry__history
+    given:
+      - input: ref('stg_park_registry')
+        format: sql
+        rows: |
+          select cast('park4' as varchar) as park_id, cast(2010 as integer) as company_start_year, cast(11 as integer) as game_year_origin, cast('rehearsal' as varchar) as data_set, cast('row a' as varchar) as note, cast('2026-10-10' as date) as delivered_on, cast('data/park_registry_2026-10-10_01.csv' as varchar) as delivery_file
+          union all
+          select cast('park4' as varchar) as park_id, cast(2011 as integer) as company_start_year, cast(13 as integer) as game_year_origin, cast('rehearsal' as varchar) as data_set, cast('row b' as varchar) as note, cast('2026-10-10' as date) as delivered_on, cast('data/park_registry_2026-10-10_01.csv' as varchar) as delivery_file
+          union all
+          select cast('park4' as varchar) as park_id, cast(2012 as integer) as company_start_year, cast(15 as integer) as game_year_origin, cast('rehearsal' as varchar) as data_set, cast('later' as varchar) as note, cast('2026-10-14' as date) as delivered_on, cast('data/park_registry_2026-10-14_01.csv' as varchar) as delivery_file
+    expect:
+      rows:
+        - {note: 'row a', valid_from: '2026-10-10', valid_to: '2026-10-14', is_current: false}
+        - {note: 'row b', valid_from: '2026-10-10', valid_to: '2026-10-14', is_current: false}
+        - {note: later, valid_from: '2026-10-14', valid_to: null, is_current: true}
+  - name: int_park_registry__history_ranks_a_later_named_file_current_despite_an_earlier_delivered_on
+    description: It proves the file name orders deliveries, so a later-named file whose delivered_on cell is mistyped to an earlier date is still the current delivery and dates from its name.
+    model: int_park_registry__history
+    given:
+      - input: ref('stg_park_registry')
+        format: sql
+        rows: |
+          select cast('park6' as varchar) as park_id, cast(2000 as integer) as company_start_year, cast(1 as integer) as game_year_origin, cast('rehearsal' as varchar) as data_set, cast('older file' as varchar) as note, cast('2026-10-10' as date) as delivered_on, cast('data/park_registry_2026-10-10_01.csv' as varchar) as delivery_file
+          union all
+          select cast('park6' as varchar) as park_id, cast(2010 as integer) as company_start_year, cast(1 as integer) as game_year_origin, cast('rehearsal' as varchar) as data_set, cast('newer file, earlier cell' as varchar) as note, cast('2026-10-01' as date) as delivered_on, cast('data/park_registry_2026-10-11_01.csv' as varchar) as delivery_file
+    expect:
+      rows:
+        - {note: 'older file', valid_from: '2026-10-10', valid_to: '2026-10-11', is_current: false}
+        - {note: 'newer file, earlier cell', valid_from: '2026-10-11', valid_to: null, is_current: true}
+  - name: int_park_registry__history_gives_one_file_with_two_delivered_on_values_one_interval
+    description: It proves one file with two rows for one park and two different delivered_on cells is one delivery with one interval dated from the file name.
+    model: int_park_registry__history
+    given:
+      - input: ref('stg_park_registry')
+        format: sql
+        rows: |
+          select cast('park7' as varchar) as park_id, cast(2000 as integer) as company_start_year, cast(1 as integer) as game_year_origin, cast('rehearsal' as varchar) as data_set, cast('row one' as varchar) as note, cast('2026-10-10' as date) as delivered_on, cast('data/park_registry_2026-10-10_01.csv' as varchar) as delivery_file
+          union all
+          select cast('park7' as varchar) as park_id, cast(2010 as integer) as company_start_year, cast(1 as integer) as game_year_origin, cast('rehearsal' as varchar) as data_set, cast('dup' as varchar) as note, cast('2026-10-01' as date) as delivered_on, cast('data/park_registry_2026-10-10_01.csv' as varchar) as delivery_file
+    expect:
+      rows:
+        - {note: 'row one', valid_from: '2026-10-10', valid_to: null, is_current: true}
+        - {note: dup, valid_from: '2026-10-10', valid_to: null, is_current: true}
+  - name: int_park_registry__history_reads_an_absolute_path_like_a_bare_name
+    description: It proves an absolute delivery_file orders as its base name does, so a publish and a ci build agree, and a file whose name does not match the pattern is left out.
+    model: int_park_registry__history
+    given:
+      - input: ref('stg_park_registry')
+        format: sql
+        rows: |
+          select cast('park5' as varchar) as park_id, cast(2020 as integer) as company_start_year, cast(17 as integer) as game_year_origin, cast('rehearsal' as varchar) as data_set, cast('absolute and early' as varchar) as note, cast('2026-10-10' as date) as delivered_on, cast('/srv/z/feed/v1/park_registry_2026-10-10_01.csv' as varchar) as delivery_file
+          union all
+          select cast('park5' as varchar) as park_id, cast(2021 as integer) as company_start_year, cast(19 as integer) as game_year_origin, cast('rehearsal' as varchar) as data_set, cast('bare and late' as varchar) as note, cast('2026-10-12' as date) as delivered_on, cast('park_registry_2026-10-12_01.csv' as varchar) as delivery_file
+          union all
+          select cast('park5' as varchar) as park_id, cast(2022 as integer) as company_start_year, cast(21 as integer) as game_year_origin, cast('rehearsal' as varchar) as data_set, cast('misnamed' as varchar) as note, cast('2026-10-13' as date) as delivered_on, cast('data/park_registry_2026-10-13_1.csv' as varchar) as delivery_file
+          union all
+          select cast('park5' as varchar) as park_id, cast(2023 as integer) as company_start_year, cast(23 as integer) as game_year_origin, cast('rehearsal' as varchar) as data_set, cast('underscore in the sequence slot' as varchar) as note, cast('2026-10-14' as date) as delivered_on, cast('data/park_registry_2026-10-1005_.csv' as varchar) as delivery_file
+    expect:
+      rows:
+        - {note: 'absolute and early', file_name: park_registry_2026-10-10_01.csv, valid_to: '2026-10-12', is_current: false}
+        - {note: 'bare and late', file_name: park_registry_2026-10-12_01.csv, valid_to: null, is_current: true}

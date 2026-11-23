@@ -1,0 +1,66 @@
+version: 2
+
+models:
+  - name: dim_item
+    description: >-
+      Answers which of the game's integer item codes appear on kept ride-days.
+      Grain: one row per distinct non-null item code. Key: shop_item. The
+      model has no unit; no clock. It holds the game's
+      own code from either item column of any attraction, with no name;
+      names and item groups wait for the item rules. On the zero-row build the
+      model is empty because there are no kept ride-days.
+    config:
+      contract:
+        enforced: true
+    meta:
+      expected_min_rows: 1
+    data_tests:
+      - rows_on_sample:
+          arguments:
+            expected: 10
+    columns:
+      - name: shop_item
+        data_type: integer
+        description: "Game item code from either item column; unit: item code; no clock."
+        data_tests:
+          - unique:
+              config:
+                severity: error
+          - not_null:
+              config:
+                severity: error
+
+unit_tests:
+  - name: dim_item_codes_from_both_item_columns_are_distinct_and_non_null
+    description: >-
+      It proves codes from both item columns appear once, repeated primary
+      codes collapse, and null codes are excluded.
+    model: dim_item
+    given:
+      - input: ref('int_ride_days__kept')
+        format: sql
+        rows: |
+          select
+            cast(7 as integer) as shop_item,
+            cast(null as integer) as shop_item_secondary
+          union all
+          select
+            cast(7 as integer),
+            cast(null as integer)
+          union all
+          select
+            cast(2 as integer),
+            cast(4 as integer)
+          union all
+          select
+            cast(null as integer),
+            cast(7 as integer)
+          union all
+          select
+            cast(null as integer),
+            cast(null as integer)
+    expect:
+      rows:
+        - {shop_item: 2}
+        - {shop_item: 4}
+        - {shop_item: 7}

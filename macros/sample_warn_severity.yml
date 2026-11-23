@@ -1,0 +1,14 @@
+version: 2
+
+macros:
+  - name: sample_warn_severity
+    description: >
+      Returns the severity a singular test gives a failure that depends on the
+      data set: `warn` on the `ci` target, and on the `dev` target when the
+      `parquet_root` variable (a trailing slash ignored) is the committed
+      sample, `data/sample/rehearsal`, as a relative or project-absolute path;
+      `error` on every other target and data set. The rule is ADR 0031 (the
+      missing-day test warns over the committed sample and errors on real
+      data), and `docs/CONVENTIONS.md` (test severity) points at it. Call it
+      in a test's `config(severity=sample_warn_severity())`.
+    arguments: []

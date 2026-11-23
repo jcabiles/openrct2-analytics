@@ -1,0 +1,68 @@
+# Allowlist of mart relations the site may export. Every relation must be in the
+# marts schema; the export copies these columns as delivered and computes nothing.
+
+[[export]]
+name = "park_month"
+relation = "marts.fct_park_month"
+output = "park_month.json"
+columns = ["park_month_key", "park_id", "statement_company_date", "operating_profit"]
+order_by = ["park_id", "statement_company_date"]
+
+[[export]]
+name = "park_year"
+relation = "marts.obt_park_year"
+output = "park_year.json"
+columns = [
+  "park_year_key", "park_id", "company_year", "statements_kept", "statements_expected",
+  "close_status", "is_partial_first_season", "months_checked", "operating_profit",
+]
+order_by = ["company_year", "park_id"]
+
+[[export]]
+name = "company_year"
+relation = "marts.obt_company_year"
+output = "company_year.json"
+columns = [
+  "company_year", "parks_reporting", "parks_partial_first_season", "statements_kept",
+  "months_checked", "operating_profit",
+]
+order_by = ["company_year"]
+
+[[export]]
+name = "ride_month"
+relation = "marts.obt_ride_month"
+output = "ride_month.json"
+columns = [
+  "ride_month_key", "ride_key", "park_id", "ride_name", "company_year", "company_date",
+  "ride_days", "average_availability_from_downtime_pct", "longest_queue_seen_minutes", "riders",
+]
+order_by = ["park_id", "company_date", "ride_key"]
+
+[[export]]
+name = "ride_year"
+relation = "marts.obt_ride_year"
+output = "ride_year.json"
+columns = [
+  "ride_year_key", "ride_key", "park_id", "ride_name", "company_year", "first_company_date",
+  "last_company_date", "ride_days", "riders", "riders_rank_in_park_year",
+  "latest_guest_rating_pct", "latest_ride_age_months",
+]
+order_by = ["company_year", "park_id", "ride_key"]
+
+[[export]]
+name = "park_month_revenue"
+relation = "marts.obt_park_month"
+output = "park_month_revenue.json"
+columns = [
+  "park_month_key", "park_id", "company_date", "operating_revenue", "ride_revenue",
+  "food_drink_revenue", "merchandise_revenue", "entrance_revenue", "ride_revenue_share_pct",
+  "food_drink_revenue_share_pct", "merchandise_revenue_share_pct", "entrance_revenue_share_pct",
+]
+order_by = ["park_id", "company_date"]
+
+[[export]]
+name = "park"
+relation = "marts.dim_park"
+output = "park.json"
+columns = ["park_id", "park_number"]
+order_by = ["park_number", "park_id"]

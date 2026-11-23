@@ -1,0 +1,553 @@
+version: 2
+
+unit_tests:
+  - name: stg_session_start_keeps_first_delivery_by_received_file_line
+    description: >-
+      It proves the earliest received_at wins even from a higher line and an earlier emitted_at, that _raw_file
+      breaks a received_at tie before _raw_line, and that the lower _raw_line wins at equal received_at and
+      _raw_file, whatever the input order.
+    model: stg_session_start
+    given:
+      - input: source('landing', 'session_start')
+        format: sql
+        rows: |
+          select
+            cast(1 as integer) as schema_version,
+            cast('session_start' as varchar) as event_type,
+            cast('0.3.0' as varchar) as plugin_version,
+            cast('kpark1' as varchar) as park_id,
+            cast('s1' as varchar) as session_id,
+            cast(1 as bigint) as seq,
+            cast('s1-1' as varchar) as event_id,
+            cast(2 as integer) as game_year,
+            cast(3 as integer) as game_month,
+            cast(4 as integer) as game_day,
+            cast(1000 as bigint) as game_ticks_elapsed,
+            cast('2026-09-30 23:10:00+00' as timestamptz) as emitted_at,
+            cast('2026-09-30 23:31:00+00' as timestamptz) as received_at,
+            cast('a.jsonl' as varchar) as _raw_file,
+            cast(2 as bigint) as _raw_line,
+            cast(122 as integer) as api_version,
+            cast('Loser 1' as varchar) as park_name,
+            cast('Scenario' as varchar) as scenario_name,
+            cast(true as boolean) as headless,
+            cast(1 as integer) as game_speed,
+            cast('warm' as varchar) as climate,
+            cast(null as varchar) as loaded_save_id,
+            cast(null as varchar) as loaded_save_session_id,
+            cast(null as bigint) as loaded_save_seq_floor,
+            cast(null as integer) as loaded_save_lines_waiting
+          union all
+          select
+            cast(1 as integer), cast('session_start' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(1 as bigint), cast('s1-1' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(4 as integer), cast(1000 as bigint),
+            cast('2026-09-30 23:30:00+00' as timestamptz), cast('2026-09-30 23:31:00+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(1 as bigint), cast(122 as integer), cast('Winner 1' as varchar),
+            cast('Scenario' as varchar), cast(true as boolean), cast(1 as integer), cast('warm' as varchar),
+            cast(null as varchar), cast(null as varchar), cast(null as bigint), cast(null as integer)
+          union all
+          select
+            cast(1 as integer), cast('session_start' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s2' as varchar), cast(2 as bigint), cast('s2-2' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(4 as integer), cast(2000 as bigint),
+            cast('2026-09-30 23:10:01+00' as timestamptz), cast('2026-09-30 23:31:00+00' as timestamptz),
+            cast('b.jsonl' as varchar), cast(2 as bigint), cast(122 as integer), cast('Loser 2' as varchar),
+            cast('Scenario' as varchar), cast(true as boolean), cast(1 as integer), cast('warm' as varchar),
+            cast(null as varchar), cast(null as varchar), cast(null as bigint), cast(null as integer)
+          union all
+          select
+            cast(1 as integer), cast('session_start' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s2' as varchar), cast(2 as bigint), cast('s2-2' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(4 as integer), cast(2000 as bigint),
+            cast('2026-09-30 23:30:01+00' as timestamptz), cast('2026-09-30 23:31:00+00' as timestamptz),
+            cast('b.jsonl' as varchar), cast(1 as bigint), cast(122 as integer), cast('Winner 2' as varchar),
+            cast('Scenario' as varchar), cast(true as boolean), cast(1 as integer), cast('warm' as varchar),
+            cast(null as varchar), cast(null as varchar), cast(null as bigint), cast(null as integer)
+          union all
+          select
+            cast(1 as integer), cast('session_start' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s3' as varchar), cast(3 as bigint), cast('s3-3' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(4 as integer), cast(3000 as bigint),
+            cast('2026-09-30 23:10:02+00' as timestamptz), cast('2026-09-30 23:31:00+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(2 as bigint), cast(122 as integer), cast('Loser 3' as varchar),
+            cast('Scenario' as varchar), cast(true as boolean), cast(1 as integer), cast('warm' as varchar),
+            cast(null as varchar), cast(null as varchar), cast(null as bigint), cast(null as integer)
+          union all
+          select
+            cast(1 as integer), cast('session_start' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s3' as varchar), cast(3 as bigint), cast('s3-3' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(4 as integer), cast(3000 as bigint),
+            cast('2026-09-30 23:30:02+00' as timestamptz), cast('2026-09-30 23:31:00+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(1 as bigint), cast(122 as integer), cast('Winner 3' as varchar),
+            cast('Scenario' as varchar), cast(true as boolean), cast(1 as integer), cast('warm' as varchar),
+            cast(null as varchar), cast(null as varchar), cast(null as bigint), cast(null as integer)
+          union all
+          select
+            cast(1 as integer), cast('session_start' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s4' as varchar), cast(4 as bigint), cast('s4-4' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(4 as integer), cast(4000 as bigint),
+            cast('2026-09-30 23:10:03+00' as timestamptz), cast('2026-09-30 23:31:00+00' as timestamptz),
+            cast('b.jsonl' as varchar), cast(2 as bigint), cast(122 as integer), cast('Loser 4' as varchar),
+            cast('Scenario' as varchar), cast(true as boolean), cast(1 as integer), cast('warm' as varchar),
+            cast(null as varchar), cast(null as varchar), cast(null as bigint), cast(null as integer)
+          union all
+          select
+            cast(1 as integer), cast('session_start' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s4' as varchar), cast(4 as bigint), cast('s4-4' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(4 as integer), cast(4000 as bigint),
+            cast('2026-09-30 23:30:03+00' as timestamptz), cast('2026-09-30 23:31:00+00' as timestamptz),
+            cast('b.jsonl' as varchar), cast(1 as bigint), cast(122 as integer), cast('Winner 4' as varchar),
+            cast('Scenario' as varchar), cast(true as boolean), cast(1 as integer), cast('warm' as varchar),
+            cast(null as varchar), cast(null as varchar), cast(null as bigint), cast(null as integer)
+          union all
+          select
+            cast(1 as integer), cast('session_start' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s5' as varchar), cast(5 as bigint), cast('s5-5' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(4 as integer), cast(5000 as bigint),
+            cast('2026-09-30 23:10:04+00' as timestamptz), cast('2026-09-30 23:31:00+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(2 as bigint), cast(122 as integer), cast('Loser 5' as varchar),
+            cast('Scenario' as varchar), cast(true as boolean), cast(1 as integer), cast('warm' as varchar),
+            cast(null as varchar), cast(null as varchar), cast(null as bigint), cast(null as integer)
+          union all
+          select
+            cast(1 as integer), cast('session_start' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s5' as varchar), cast(5 as bigint), cast('s5-5' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(4 as integer), cast(5000 as bigint),
+            cast('2026-09-30 23:30:04+00' as timestamptz), cast('2026-09-30 23:31:00+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(1 as bigint), cast(122 as integer), cast('Winner 5' as varchar),
+            cast('Scenario' as varchar), cast(true as boolean), cast(1 as integer), cast('warm' as varchar),
+            cast(null as varchar), cast(null as varchar), cast(null as bigint), cast(null as integer)
+          union all
+          select
+            cast(1 as integer), cast('session_start' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s6' as varchar), cast(6 as bigint), cast('s6-6' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(4 as integer), cast(6000 as bigint),
+            cast('2026-09-30 23:10:05+00' as timestamptz), cast('2026-09-30 23:31:00+00' as timestamptz),
+            cast('b.jsonl' as varchar), cast(2 as bigint), cast(122 as integer), cast('Loser 6' as varchar),
+            cast('Scenario' as varchar), cast(true as boolean), cast(1 as integer), cast('warm' as varchar),
+            cast(null as varchar), cast(null as varchar), cast(null as bigint), cast(null as integer)
+          union all
+          select
+            cast(1 as integer), cast('session_start' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s6' as varchar), cast(6 as bigint), cast('s6-6' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(4 as integer), cast(6000 as bigint),
+            cast('2026-09-30 23:30:05+00' as timestamptz), cast('2026-09-30 23:31:00+00' as timestamptz),
+            cast('b.jsonl' as varchar), cast(1 as bigint), cast(122 as integer), cast('Winner 6' as varchar),
+            cast('Scenario' as varchar), cast(true as boolean), cast(1 as integer), cast('warm' as varchar),
+            cast(null as varchar), cast(null as varchar), cast(null as bigint), cast(null as integer)
+          union all
+          select
+            cast(1 as integer), cast('session_start' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s7' as varchar), cast(7 as bigint), cast('s7-7' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(4 as integer), cast(7000 as bigint),
+            cast('2026-09-30 23:10:06+00' as timestamptz), cast('2026-09-30 23:31:00+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(2 as bigint), cast(122 as integer), cast('Loser 7' as varchar),
+            cast('Scenario' as varchar), cast(true as boolean), cast(1 as integer), cast('warm' as varchar),
+            cast(null as varchar), cast(null as varchar), cast(null as bigint), cast(null as integer)
+          union all
+          select
+            cast(1 as integer), cast('session_start' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s7' as varchar), cast(7 as bigint), cast('s7-7' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(4 as integer), cast(7000 as bigint),
+            cast('2026-09-30 23:30:06+00' as timestamptz), cast('2026-09-30 23:31:00+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(1 as bigint), cast(122 as integer), cast('Winner 7' as varchar),
+            cast('Scenario' as varchar), cast(true as boolean), cast(1 as integer), cast('warm' as varchar),
+            cast(null as varchar), cast(null as varchar), cast(null as bigint), cast(null as integer)
+          union all
+          select
+            cast(1 as integer), cast('session_start' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s8' as varchar), cast(8 as bigint), cast('s8-8' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(4 as integer), cast(8000 as bigint),
+            cast('2026-09-30 23:10:07+00' as timestamptz), cast('2026-09-30 23:31:00+00' as timestamptz),
+            cast('b.jsonl' as varchar), cast(2 as bigint), cast(122 as integer), cast('Loser 8' as varchar),
+            cast('Scenario' as varchar), cast(true as boolean), cast(1 as integer), cast('warm' as varchar),
+            cast(null as varchar), cast(null as varchar), cast(null as bigint), cast(null as integer)
+          union all
+          select
+            cast(1 as integer), cast('session_start' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s8' as varchar), cast(8 as bigint), cast('s8-8' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(4 as integer), cast(8000 as bigint),
+            cast('2026-09-30 23:30:07+00' as timestamptz), cast('2026-09-30 23:31:00+00' as timestamptz),
+            cast('b.jsonl' as varchar), cast(1 as bigint), cast(122 as integer), cast('Winner 8' as varchar),
+            cast('Scenario' as varchar), cast(true as boolean), cast(1 as integer), cast('warm' as varchar),
+            cast(null as varchar), cast(null as varchar), cast(null as bigint), cast(null as integer)
+          union all
+          select
+            cast(1 as integer), cast('session_start' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s9' as varchar), cast(9 as bigint), cast('s9-9' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(4 as integer), cast(9000 as bigint),
+            cast('2026-09-30 23:30:08+00' as timestamptz), cast('2026-09-30 23:31:00+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(1 as bigint), cast(122 as integer), cast('Winner 9' as varchar),
+            cast('Scenario' as varchar), cast(true as boolean), cast(1 as integer), cast('warm' as varchar),
+            cast(null as varchar), cast(null as varchar), cast(null as bigint), cast(null as integer)
+          union all
+          select
+            cast(1 as integer), cast('session_start' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s9' as varchar), cast(9 as bigint), cast('s9-9' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(4 as integer), cast(9000 as bigint),
+            cast('2026-09-30 23:10:08+00' as timestamptz), cast('2026-09-30 23:31:00+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(12 as bigint), cast(122 as integer), cast('Loser 9' as varchar),
+            cast('Scenario' as varchar), cast(true as boolean), cast(1 as integer), cast('warm' as varchar),
+            cast(null as varchar), cast(null as varchar), cast(null as bigint), cast(null as integer)
+          union all
+          select
+            cast(1 as integer), cast('session_start' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s10' as varchar), cast(10 as bigint), cast('s10-10' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(4 as integer), cast(10000 as bigint),
+            cast('2026-09-30 23:30:09+00' as timestamptz), cast('2026-09-30 23:31:00+00' as timestamptz),
+            cast('b.jsonl' as varchar), cast(1 as bigint), cast(122 as integer), cast('Winner 10' as varchar),
+            cast('Scenario' as varchar), cast(true as boolean), cast(1 as integer), cast('warm' as varchar),
+            cast(null as varchar), cast(null as varchar), cast(null as bigint), cast(null as integer)
+          union all
+          select
+            cast(1 as integer), cast('session_start' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s10' as varchar), cast(10 as bigint), cast('s10-10' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(4 as integer), cast(10000 as bigint),
+            cast('2026-09-30 23:10:09+00' as timestamptz), cast('2026-09-30 23:31:00+00' as timestamptz),
+            cast('b.jsonl' as varchar), cast(12 as bigint), cast(122 as integer), cast('Loser 10' as varchar),
+            cast('Scenario' as varchar), cast(true as boolean), cast(1 as integer), cast('warm' as varchar),
+            cast(null as varchar), cast(null as varchar), cast(null as bigint), cast(null as integer)
+          union all
+          select
+            cast(1 as integer), cast('session_start' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s11' as varchar), cast(11 as bigint), cast('s11-11' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(4 as integer), cast(11000 as bigint),
+            cast('2026-09-30 23:40:10+00' as timestamptz), cast('2026-09-30 23:30:00+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(1 as bigint), cast(122 as integer), cast('Loser 11' as varchar),
+            cast('Scenario' as varchar), cast(true as boolean), cast(1 as integer), cast('warm' as varchar),
+            cast(null as varchar), cast(null as varchar), cast(null as bigint), cast(null as integer)
+          union all
+          select
+            cast(1 as integer), cast('session_start' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s11' as varchar), cast(11 as bigint), cast('s11-11' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(4 as integer), cast(11000 as bigint),
+            cast('2026-09-30 23:10:10+00' as timestamptz), cast('2026-09-30 23:20:00+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(12 as bigint), cast(122 as integer), cast('Winner 11' as varchar),
+            cast('Scenario' as varchar), cast(true as boolean), cast(1 as integer), cast('warm' as varchar),
+            cast(null as varchar), cast(null as varchar), cast(null as bigint), cast(null as integer)
+          union all
+          select
+            cast(1 as integer), cast('session_start' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s12' as varchar), cast(12 as bigint), cast('s12-12' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(4 as integer), cast(12000 as bigint),
+            cast('2026-09-30 23:30:11+00' as timestamptz), cast('2026-09-30 23:31:00+00' as timestamptz),
+            cast('b.jsonl' as varchar), cast(1 as bigint), cast(122 as integer), cast('Loser 12' as varchar),
+            cast('Scenario' as varchar), cast(true as boolean), cast(1 as integer), cast('warm' as varchar),
+            cast(null as varchar), cast(null as varchar), cast(null as bigint), cast(null as integer)
+          union all
+          select
+            cast(1 as integer), cast('session_start' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s12' as varchar), cast(12 as bigint), cast('s12-12' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(4 as integer), cast(12000 as bigint),
+            cast('2026-09-30 23:30:11+00' as timestamptz), cast('2026-09-30 23:31:00+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(5 as bigint), cast(122 as integer), cast('Winner 12' as varchar),
+            cast('Scenario' as varchar), cast(true as boolean), cast(1 as integer), cast('warm' as varchar),
+            cast(null as varchar), cast(null as varchar), cast(null as bigint), cast(null as integer)
+      - input: ref('stg_session_play_mode')
+        format: sql
+        rows: |
+          select cast(null as varchar) as session_id, cast(null as varchar) as play_mode where false
+    expect:
+      format: sql
+      rows: |
+          select
+            cast(1 as integer) as schema_version,
+            cast('session_start' as varchar) as event_type,
+            cast('0.3.0' as varchar) as plugin_version,
+            cast('kpark1' as varchar) as park_id,
+            cast('s1' as varchar) as session_id,
+            cast(1 as bigint) as seq,
+            cast('s1-1' as varchar) as event_id,
+            cast(2 as integer) as game_year,
+            cast(3 as integer) as game_month,
+            cast(4 as integer) as game_day,
+            cast(1000 as bigint) as game_ticks_elapsed,
+            cast('2026-09-30 23:30:00+00' as timestamptz) as emitted_at,
+            cast('2026-09-30 23:31:00+00' as timestamptz) as received_at,
+            cast('a.jsonl' as varchar) as _raw_file,
+            cast(1 as bigint) as _raw_line,
+            cast(122 as integer) as api_version,
+            cast('Winner 1' as varchar) as park_name,
+            cast('Scenario' as varchar) as scenario_name,
+            cast(true as boolean) as headless,
+            cast(1 as integer) as game_speed,
+            cast('warm' as varchar) as climate,
+            cast(null as varchar) as loaded_save_id,
+            cast(null as varchar) as loaded_save_session_id,
+            cast(null as bigint) as loaded_save_seq_floor,
+            cast(null as integer) as loaded_save_lines_waiting,
+            cast('managed' as varchar) as play_mode
+          union all
+          select
+            cast(1 as integer), cast('session_start' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s2' as varchar), cast(2 as bigint), cast('s2-2' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(4 as integer), cast(2000 as bigint),
+            cast('2026-09-30 23:30:01+00' as timestamptz), cast('2026-09-30 23:31:00+00' as timestamptz),
+            cast('b.jsonl' as varchar), cast(1 as bigint), cast(122 as integer), cast('Winner 2' as varchar),
+            cast('Scenario' as varchar), cast(true as boolean), cast(1 as integer), cast('warm' as varchar),
+            cast(null as varchar), cast(null as varchar), cast(null as bigint), cast(null as integer), cast('managed' as varchar)
+          union all
+          select
+            cast(1 as integer), cast('session_start' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s3' as varchar), cast(3 as bigint), cast('s3-3' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(4 as integer), cast(3000 as bigint),
+            cast('2026-09-30 23:30:02+00' as timestamptz), cast('2026-09-30 23:31:00+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(1 as bigint), cast(122 as integer), cast('Winner 3' as varchar),
+            cast('Scenario' as varchar), cast(true as boolean), cast(1 as integer), cast('warm' as varchar),
+            cast(null as varchar), cast(null as varchar), cast(null as bigint), cast(null as integer), cast('managed' as varchar)
+          union all
+          select
+            cast(1 as integer), cast('session_start' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s4' as varchar), cast(4 as bigint), cast('s4-4' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(4 as integer), cast(4000 as bigint),
+            cast('2026-09-30 23:30:03+00' as timestamptz), cast('2026-09-30 23:31:00+00' as timestamptz),
+            cast('b.jsonl' as varchar), cast(1 as bigint), cast(122 as integer), cast('Winner 4' as varchar),
+            cast('Scenario' as varchar), cast(true as boolean), cast(1 as integer), cast('warm' as varchar),
+            cast(null as varchar), cast(null as varchar), cast(null as bigint), cast(null as integer), cast('managed' as varchar)
+          union all
+          select
+            cast(1 as integer), cast('session_start' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s5' as varchar), cast(5 as bigint), cast('s5-5' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(4 as integer), cast(5000 as bigint),
+            cast('2026-09-30 23:30:04+00' as timestamptz), cast('2026-09-30 23:31:00+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(1 as bigint), cast(122 as integer), cast('Winner 5' as varchar),
+            cast('Scenario' as varchar), cast(true as boolean), cast(1 as integer), cast('warm' as varchar),
+            cast(null as varchar), cast(null as varchar), cast(null as bigint), cast(null as integer), cast('managed' as varchar)
+          union all
+          select
+            cast(1 as integer), cast('session_start' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s6' as varchar), cast(6 as bigint), cast('s6-6' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(4 as integer), cast(6000 as bigint),
+            cast('2026-09-30 23:30:05+00' as timestamptz), cast('2026-09-30 23:31:00+00' as timestamptz),
+            cast('b.jsonl' as varchar), cast(1 as bigint), cast(122 as integer), cast('Winner 6' as varchar),
+            cast('Scenario' as varchar), cast(true as boolean), cast(1 as integer), cast('warm' as varchar),
+            cast(null as varchar), cast(null as varchar), cast(null as bigint), cast(null as integer), cast('managed' as varchar)
+          union all
+          select
+            cast(1 as integer), cast('session_start' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s7' as varchar), cast(7 as bigint), cast('s7-7' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(4 as integer), cast(7000 as bigint),
+            cast('2026-09-30 23:30:06+00' as timestamptz), cast('2026-09-30 23:31:00+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(1 as bigint), cast(122 as integer), cast('Winner 7' as varchar),
+            cast('Scenario' as varchar), cast(true as boolean), cast(1 as integer), cast('warm' as varchar),
+            cast(null as varchar), cast(null as varchar), cast(null as bigint), cast(null as integer), cast('managed' as varchar)
+          union all
+          select
+            cast(1 as integer), cast('session_start' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s8' as varchar), cast(8 as bigint), cast('s8-8' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(4 as integer), cast(8000 as bigint),
+            cast('2026-09-30 23:30:07+00' as timestamptz), cast('2026-09-30 23:31:00+00' as timestamptz),
+            cast('b.jsonl' as varchar), cast(1 as bigint), cast(122 as integer), cast('Winner 8' as varchar),
+            cast('Scenario' as varchar), cast(true as boolean), cast(1 as integer), cast('warm' as varchar),
+            cast(null as varchar), cast(null as varchar), cast(null as bigint), cast(null as integer), cast('managed' as varchar)
+          union all
+          select
+            cast(1 as integer), cast('session_start' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s9' as varchar), cast(9 as bigint), cast('s9-9' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(4 as integer), cast(9000 as bigint),
+            cast('2026-09-30 23:30:08+00' as timestamptz), cast('2026-09-30 23:31:00+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(1 as bigint), cast(122 as integer), cast('Winner 9' as varchar),
+            cast('Scenario' as varchar), cast(true as boolean), cast(1 as integer), cast('warm' as varchar),
+            cast(null as varchar), cast(null as varchar), cast(null as bigint), cast(null as integer), cast('managed' as varchar)
+          union all
+          select
+            cast(1 as integer), cast('session_start' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s10' as varchar), cast(10 as bigint), cast('s10-10' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(4 as integer), cast(10000 as bigint),
+            cast('2026-09-30 23:30:09+00' as timestamptz), cast('2026-09-30 23:31:00+00' as timestamptz),
+            cast('b.jsonl' as varchar), cast(1 as bigint), cast(122 as integer), cast('Winner 10' as varchar),
+            cast('Scenario' as varchar), cast(true as boolean), cast(1 as integer), cast('warm' as varchar),
+            cast(null as varchar), cast(null as varchar), cast(null as bigint), cast(null as integer), cast('managed' as varchar)
+          union all
+          select
+            cast(1 as integer), cast('session_start' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s11' as varchar), cast(11 as bigint), cast('s11-11' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(4 as integer), cast(11000 as bigint),
+            cast('2026-09-30 23:10:10+00' as timestamptz), cast('2026-09-30 23:20:00+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(12 as bigint), cast(122 as integer), cast('Winner 11' as varchar),
+            cast('Scenario' as varchar), cast(true as boolean), cast(1 as integer), cast('warm' as varchar),
+            cast(null as varchar), cast(null as varchar), cast(null as bigint), cast(null as integer), cast('managed' as varchar)
+          union all
+          select
+            cast(1 as integer), cast('session_start' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s12' as varchar), cast(12 as bigint), cast('s12-12' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(4 as integer), cast(12000 as bigint),
+            cast('2026-09-30 23:30:11+00' as timestamptz), cast('2026-09-30 23:31:00+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(5 as bigint), cast(122 as integer), cast('Winner 12' as varchar),
+            cast('Scenario' as varchar), cast(true as boolean), cast(1 as integer), cast('warm' as varchar),
+            cast(null as varchar), cast(null as varchar), cast(null as bigint), cast(null as integer), cast('managed' as varchar)
+
+  - name: stg_session_start_passes_climate_and_loaded_save_fields_through
+    description: The climate and the four loaded-save fields pass through unchanged, for a session that loaded a save and for one whose fields are null.
+    model: stg_session_start
+    given:
+      - input: source('landing', 'session_start')
+        format: sql
+        rows: |
+          select
+            cast(1 as integer) as schema_version,
+            cast('session_start' as varchar) as event_type,
+            cast('0.3.0' as varchar) as plugin_version,
+            cast('kpark1' as varchar) as park_id,
+            cast('s2' as varchar) as session_id,
+            cast(1 as bigint) as seq,
+            cast('s2-1' as varchar) as event_id,
+            cast(1 as integer) as game_year,
+            cast(0 as integer) as game_month,
+            cast(1 as integer) as game_day,
+            cast(1000 as bigint) as game_ticks_elapsed,
+            cast('2026-09-30 23:30:00+00' as timestamptz) as emitted_at,
+            cast('2026-09-30 23:30:01+00' as timestamptz) as received_at,
+            cast('a.jsonl' as varchar) as _raw_file,
+            cast(1 as bigint) as _raw_line,
+            cast(122 as integer) as api_version,
+            cast('Park' as varchar) as park_name,
+            cast('Scenario' as varchar) as scenario_name,
+            cast(true as boolean) as headless,
+            cast(1 as integer) as game_speed,
+            cast('hotAndDry' as varchar) as climate,
+            cast('v1-a' as varchar) as loaded_save_id,
+            cast('s1' as varchar) as loaded_save_session_id,
+            cast(9007199254740991 as bigint) as loaded_save_seq_floor,
+            cast(4 as integer) as loaded_save_lines_waiting
+          union all
+          select
+            cast(1 as integer), cast('session_start' as varchar), cast('0.2.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(1 as bigint), cast('s1-1' as varchar),
+            cast(1 as integer), cast(0 as integer), cast(1 as integer), cast(900 as bigint),
+            cast('2026-09-30 23:00:00+00' as timestamptz), cast('2026-09-30 23:00:01+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(2 as bigint), cast(122 as integer), cast('Park' as varchar),
+            cast('Scenario' as varchar), cast(true as boolean), cast(1 as integer), cast(null as varchar),
+            cast(null as varchar), cast(null as varchar), cast(null as bigint), cast(null as integer)
+      - input: ref('stg_session_play_mode')
+        format: sql
+        rows: |
+          select cast(null as varchar) as session_id, cast(null as varchar) as play_mode where false
+    expect:
+      format: sql
+      rows: |
+          select
+            cast(1 as integer) as schema_version,
+            cast('session_start' as varchar) as event_type,
+            cast('0.3.0' as varchar) as plugin_version,
+            cast('kpark1' as varchar) as park_id,
+            cast('s2' as varchar) as session_id,
+            cast(1 as bigint) as seq,
+            cast('s2-1' as varchar) as event_id,
+            cast(1 as integer) as game_year,
+            cast(0 as integer) as game_month,
+            cast(1 as integer) as game_day,
+            cast(1000 as bigint) as game_ticks_elapsed,
+            cast('2026-09-30 23:30:00+00' as timestamptz) as emitted_at,
+            cast('2026-09-30 23:30:01+00' as timestamptz) as received_at,
+            cast('a.jsonl' as varchar) as _raw_file,
+            cast(1 as bigint) as _raw_line,
+            cast(122 as integer) as api_version,
+            cast('Park' as varchar) as park_name,
+            cast('Scenario' as varchar) as scenario_name,
+            cast(true as boolean) as headless,
+            cast(1 as integer) as game_speed,
+            cast('hotAndDry' as varchar) as climate,
+            cast('v1-a' as varchar) as loaded_save_id,
+            cast('s1' as varchar) as loaded_save_session_id,
+            cast(9007199254740991 as bigint) as loaded_save_seq_floor,
+            cast(4 as integer) as loaded_save_lines_waiting,
+            cast('managed' as varchar) as play_mode
+          union all
+          select
+            cast(1 as integer), cast('session_start' as varchar), cast('0.2.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(1 as bigint), cast('s1-1' as varchar),
+            cast(1 as integer), cast(0 as integer), cast(1 as integer), cast(900 as bigint),
+            cast('2026-09-30 23:00:00+00' as timestamptz), cast('2026-09-30 23:00:01+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(2 as bigint), cast(122 as integer), cast('Park' as varchar),
+            cast('Scenario' as varchar), cast(true as boolean), cast(1 as integer), cast(null as varchar),
+            cast(null as varchar), cast(null as varchar), cast(null as bigint), cast(null as integer), cast('managed' as varchar)
+
+  - name: stg_session_start_labels_play_mode_and_defaults_to_managed
+    description: >-
+      It proves a session with an autopilot row in the play-mode label feed is autopilot, and that a session with no
+      row is managed.
+    model: stg_session_start
+    given:
+      - input: source('landing', 'session_start')
+        format: sql
+        rows: |
+          select
+            cast(1 as integer) as schema_version,
+            cast('session_start' as varchar) as event_type,
+            cast('0.3.0' as varchar) as plugin_version,
+            cast('kpark1' as varchar) as park_id,
+            cast('s1' as varchar) as session_id,
+            cast(1 as bigint) as seq,
+            cast('s1-1' as varchar) as event_id,
+            cast(1 as integer) as game_year,
+            cast(0 as integer) as game_month,
+            cast(1 as integer) as game_day,
+            cast(900 as bigint) as game_ticks_elapsed,
+            cast('2026-09-30 23:00:00+00' as timestamptz) as emitted_at,
+            cast('2026-09-30 23:00:01+00' as timestamptz) as received_at,
+            cast('a.jsonl' as varchar) as _raw_file,
+            cast(1 as bigint) as _raw_line,
+            cast(122 as integer) as api_version,
+            cast('Park' as varchar) as park_name,
+            cast('Scenario' as varchar) as scenario_name,
+            cast(false as boolean) as headless,
+            cast(1 as integer) as game_speed,
+            cast('warm' as varchar) as climate,
+            cast(null as varchar) as loaded_save_id,
+            cast(null as varchar) as loaded_save_session_id,
+            cast(null as bigint) as loaded_save_seq_floor,
+            cast(null as integer) as loaded_save_lines_waiting
+          union all
+          select
+            cast(1 as integer), cast('session_start' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s2' as varchar), cast(1 as bigint), cast('s2-1' as varchar),
+            cast(2 as integer), cast(0 as integer), cast(1 as integer), cast(1000 as bigint),
+            cast('2026-10-01 23:00:00+00' as timestamptz), cast('2026-10-01 23:00:01+00' as timestamptz),
+            cast('b.jsonl' as varchar), cast(1 as bigint), cast(122 as integer), cast('Park' as varchar),
+            cast('Scenario' as varchar), cast(true as boolean), cast(8 as integer), cast('warm' as varchar),
+            cast(null as varchar), cast(null as varchar), cast(null as bigint), cast(null as integer)
+      - input: ref('stg_session_play_mode')
+        format: sql
+        rows: |
+          select cast('s2' as varchar) as session_id, cast('autopilot' as varchar) as play_mode
+    expect:
+      format: sql
+      rows: |
+          select
+            cast(1 as integer) as schema_version,
+            cast('session_start' as varchar) as event_type,
+            cast('0.3.0' as varchar) as plugin_version,
+            cast('kpark1' as varchar) as park_id,
+            cast('s1' as varchar) as session_id,
+            cast(1 as bigint) as seq,
+            cast('s1-1' as varchar) as event_id,
+            cast(1 as integer) as game_year,
+            cast(0 as integer) as game_month,
+            cast(1 as integer) as game_day,
+            cast(900 as bigint) as game_ticks_elapsed,
+            cast('2026-09-30 23:00:00+00' as timestamptz) as emitted_at,
+            cast('2026-09-30 23:00:01+00' as timestamptz) as received_at,
+            cast('a.jsonl' as varchar) as _raw_file,
+            cast(1 as bigint) as _raw_line,
+            cast(122 as integer) as api_version,
+            cast('Park' as varchar) as park_name,
+            cast('Scenario' as varchar) as scenario_name,
+            cast(false as boolean) as headless,
+            cast(1 as integer) as game_speed,
+            cast('warm' as varchar) as climate,
+            cast(null as varchar) as loaded_save_id,
+            cast(null as varchar) as loaded_save_session_id,
+            cast(null as bigint) as loaded_save_seq_floor,
+            cast(null as integer) as loaded_save_lines_waiting,
+            cast('managed' as varchar) as play_mode
+          union all
+          select
+            cast(1 as integer), cast('session_start' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s2' as varchar), cast(1 as bigint), cast('s2-1' as varchar),
+            cast(2 as integer), cast(0 as integer), cast(1 as integer), cast(1000 as bigint),
+            cast('2026-10-01 23:00:00+00' as timestamptz), cast('2026-10-01 23:00:01+00' as timestamptz),
+            cast('b.jsonl' as varchar), cast(1 as bigint), cast(122 as integer), cast('Park' as varchar),
+            cast('Scenario' as varchar), cast(true as boolean), cast(8 as integer), cast('warm' as varchar),
+            cast(null as varchar), cast(null as varchar), cast(null as bigint), cast(null as integer), cast('autopilot' as varchar)

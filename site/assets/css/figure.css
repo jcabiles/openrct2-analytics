@@ -1,0 +1,36 @@
+/* ===== figure regions: the empty state of a pending figure, the profit chart's trace and values toggle ===== */
+/* A pending figure keeps its text exactly "figure pending" (the page check reads it); the dress is all CSS.
+   Block bodies are a dashed, hatched slot like the footage box; inline bodies (mid-sentence) are a chip. */
+.fig-empty{display:flex;align-items:center;justify-content:center;gap:var(--s3);min-height:76px;margin:0;padding:var(--s4) var(--s5);border:2px dashed var(--line-strong);border-radius:var(--r2);background:repeating-linear-gradient(135deg, var(--surface) 0 14px, var(--surface-2) 14px 28px);color:var(--muted);font:700 var(--fs-0)/1.3 var(--font);list-style:none;text-align:center}
+.fig-empty::before{content:"";flex:none;width:14px;height:14px;border-radius:50%;border:2px solid var(--line-strong);background:var(--bg)}
+.fig-empty-inline{display:inline-flex;min-height:0;padding:0 var(--s2);gap:var(--s1);border-width:1.5px;border-radius:999px;background:var(--surface-2);font-size:.875em;line-height:1.5;vertical-align:baseline;white-space:nowrap}
+.fig-empty-inline::before{width:8px;height:8px;border-width:1.5px}
+/* inside a flowing paragraph the chip needs a little air either side */
+p .fig-empty-inline{margin-inline:var(--s1)}
+/* the finance note is a red band once it has text; while it is pending it is a light paper slot, not a heavy red block */
+.dnote:has([data-figure-state="pending"]){background:var(--surface-2);color:var(--muted);border:1.5px dashed var(--line-strong)}
+.dnote .fig-empty{border-color:var(--line-strong);background:none;color:var(--muted);min-height:0;padding:var(--s2) var(--s4)}
+.dnote .fig-empty::before{border-color:var(--line-strong);background:var(--bg)}
+/* the ticket stub in the hero is red stock too */
+.stub-sent.fig-empty,.stub-sent .fig-empty{min-height:0;border-color:var(--stub-muted);background:none;color:var(--stub-muted);font:700 var(--fs-0)/1.3 var(--font);justify-content:flex-start}
+.stub-sent.fig-empty::before,.stub-sent .fig-empty::before{border-color:var(--stub-muted);background:none}
+/* the kicker line above the hero title is plain text on paper: keep the chip quiet */
+.hero-kick .fig-empty-inline{border-style:dashed}
+/* By the numbers block fills its strip */
+.nums-block .fig-empty{min-height:96px}
+
+/* panel headings: small sans heading with a spaced unit line, as in the mockup */
+.fig > h3{font:700 var(--fs-1)/1.3 var(--font);letter-spacing:0}
+.fig > h3 .unit{margin-top:var(--s1)}
+/* a pending story chart fills its stage card, so the card reads as intentionally pending */
+.stage .panel > .fig{flex:1;display:flex;flex-direction:column;gap:var(--s3)}
+.stage .panel > .fig > .fig-empty{flex:1}
+/* profit chart: fills the panel; the path in the trace is code */
+#park-month-chart{display:block;max-width:100%;overflow-x:auto}
+#park-month-chart svg{display:block;max-width:100%;overflow:visible}
+.trace{margin-top:var(--s3);font-size:var(--fs-0);color:var(--muted)}
+.trace code{white-space:normal;color:var(--ink)}
+/* values table: caption left, header cells aligned with the rows */
+.vals .tbl caption{caption-side:top;text-align:left;padding:var(--s2) var(--s3);font-size:var(--fs-0);color:var(--muted)}
+#park-month-table thead th{padding:var(--s2) var(--s3);text-align:right}
+#park-month-table thead th:first-child{text-align:left}

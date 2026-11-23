@@ -1,0 +1,35 @@
+# SQL style for models/ and tests/dbt/; the rules are in docs/CONVENTIONS.md,
+# section 4, "dbt SQL style". Run from the repo root.
+[sqlfluff]
+dialect = duckdb
+templater = dbt
+encoding = utf-8
+max_line_length = 80
+
+[sqlfluff:templater:dbt]
+# The temporary `ci` target of make check; run by hand, set OPENRCT2_CI_DIR to an existing folder.
+project_dir = .
+profiles_dir = .
+target = ci
+# Fail on a model that does not compile instead of skipping it silently.
+dbt_skip_compilation_error = False
+
+[sqlfluff:indentation]
+indent_unit = space
+tab_space_size = 4
+
+[sqlfluff:layout:type:comma]
+line_position = trailing
+
+[sqlfluff:rules:capitalisation.keywords]
+capitalisation_policy = lower
+
+# The functions rule reads the extended policy key, not capitalisation_policy.
+[sqlfluff:rules:capitalisation.functions]
+extended_capitalisation_policy = lower
+
+[sqlfluff:rules:aliasing.table]
+aliasing = explicit
+
+[sqlfluff:rules:aliasing.column]
+aliasing = explicit

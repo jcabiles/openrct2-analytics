@@ -1,0 +1,112 @@
+apiVersion: v3.2.0
+kind: DataContract
+id: envelope
+name: envelope
+version: 1.8.0
+status: active
+description:
+  purpose: Fields every event carries, checked on every event type together.
+servers:
+  - server: parquet_through_duckdb
+    type: duckdb
+    database: __DATABASE__
+    schema: main
+schema:
+  - name: envelope
+    physicalType: view
+    description: >-
+      Every event type's Parquet under v1/, read together. The data is Parquet, checked through a throwaway
+      DuckDB view. Times are wall-clock UTC; the game date is the in-game calendar. Events are low-level records
+      that may repeat (ADR 0006), so consumers remove duplicates on event_id.
+    properties:
+      - name: schema_version
+        logicalType: integer
+        physicalType: INTEGER
+        required: true
+        description: Major version of the contract set, a count (always 1 here); the landing folder is v<schema_version>.
+      - name: event_type
+        logicalType: string
+        physicalType: VARCHAR
+        required: true
+        description: Event kind, one of session_start, plugin_stats, park_snapshot, finance_month, ride_snapshot, save_written, guest_arrived, guest_left, guest_refused, guest_snapshot, guest_boarded, weather_change or game_action; text, no unit.
+      - name: plugin_version
+        logicalType: string
+        physicalType: VARCHAR
+        required: true
+        description: Plugin build that sent the event; text version, no unit.
+      - name: park_id
+        logicalType: string
+        physicalType: VARCHAR
+        required: true
+        description: Stable park identifier from park storage; text, no unit.
+      - name: session_id
+        logicalType: string
+        physicalType: VARCHAR
+        required: true
+        description: Plugin start identifier, new on every start; text, no unit.
+      - name: _raw_file
+        logicalType: string
+        physicalType: VARCHAR
+        required: true
+        description: Base name of the raw JSON Lines file the row was converted from, never a path; text, no unit. Added by the converter; the plugin never sends it.
+      - name: _raw_line
+        logicalType: integer
+        physicalType: BIGINT
+        required: true
+        description: 1-based physical line number of the row in that raw file, blank lines counted; a count, no unit or clock. Added by the converter; the plugin never sends it.
+      - name: seq
+        logicalType: integer
+        physicalType: BIGINT
+        required: true
+        logicalTypeOptions:
+          minimum: 1
+        description: Order within the session across all event types, a count from 1 stamped at hand-off to the socket; no gaps or repeats (the converter audits gaps).
+      - name: event_id
+        logicalType: string
+        physicalType: VARCHAR
+        required: true
+        description: session_id-seq; text. Identifies one game event; the same event_id can appear on more than one landed delivery, and event-type staging models keep the first-received row of each.
+      - name: game_year
+        logicalType: integer
+        physicalType: INTEGER
+        required: true
+        description: In-game year, from 1; game calendar clock.
+      - name: game_month
+        logicalType: integer
+        physicalType: INTEGER
+        required: true
+        logicalTypeOptions:
+          minimum: 0
+          maximum: 7
+        description: In-game month, 0 to 7 (March = 0); game calendar clock.
+      - name: game_day
+        logicalType: integer
+        physicalType: INTEGER
+        required: true
+        logicalTypeOptions:
+          minimum: 1
+        description: In-game day of the month, from 1; game calendar clock.
+      - name: game_ticks_elapsed
+        logicalType: integer
+        physicalType: BIGINT
+        required: true
+        description: Game ticks since the park began, a count; game clock.
+      - name: emitted_at
+        logicalType: timestamp
+        physicalType: TIMESTAMP WITH TIME ZONE
+        required: true
+        description: Producer wall-clock time, UTC.
+      - name: received_at
+        logicalType: timestamp
+        physicalType: TIMESTAMP WITH TIME ZONE
+        required: true
+        description: Listener wall-clock time when the line landed, UTC.
+    quality:
+      - type: sql
+        description: event_id equals session_id-seq
+        query: SELECT COUNT(*) FROM {object} WHERE event_id <> session_id || '-' || CAST(seq AS VARCHAR)
+        mustBe: 0
+      - type: sql
+        description: seq is a whole number
+        query: SELECT COUNT(*) FROM {object} WHERE seq <> CAST(seq AS BIGINT)
+        mustBe: 0

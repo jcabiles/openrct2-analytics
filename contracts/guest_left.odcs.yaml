@@ -1,0 +1,76 @@
+apiVersion: v3.2.0
+kind: DataContract
+id: guest_left
+name: guest_left
+version: 1.8.0
+status: active
+description:
+  purpose: One event per known guest that left the park, at game-day resolution.
+servers:
+  - server: parquet_through_duckdb
+    type: duckdb
+    database: __DATABASE__
+    schema: main
+schema:
+  - name: guest_left
+    physicalType: view
+    description: >-
+      One row per known guest that left, found at a daily check, so the event's game date is the day the plugin
+      noticed, not the moment the guest left. The data is Parquet (v1/guest_left.parquet), checked through a
+      throwaway DuckDB view. A guest still in the park when the session ends has no row.
+    properties:
+      - name: guest_key
+        logicalType: integer
+        physicalType: INTEGER
+        required: true
+        logicalTypeOptions:
+          minimum: 1
+        description: >-
+          Minted by the plugin, unique within one session; the pair (session_id, guest_key) names a guest. A
+          whole number, no unit.
+      - name: guest_id
+        logicalType: integer
+        physicalType: INTEGER
+        required: true
+        logicalTypeOptions:
+          minimum: 0
+        description: >-
+          The game's guest entity slot number, a whole number; the game reuses a slot, so it is not an identity
+          (use guest_key).
+      - name: exit_reason
+        logicalType: string
+        physicalType: VARCHAR
+        required: true
+        description: >-
+          Why the guest is recorded as gone: left (the entity is gone, is no longer a guest, or is out of the
+          park after having been in) or id_reused (the generation hook reported this guest's slot for a new
+          guest); text, no unit.
+      - name: entered_park
+        logicalType: boolean
+        physicalType: BOOLEAN
+        required: true
+        description: >-
+          Whether the guest was seen with isInPark true when the session started or at any later check; true or
+          false, no unit.
+      - name: arrived_in_session
+        logicalType: boolean
+        physicalType: BOOLEAN
+        required: true
+        description: >-
+          False for a guest the plugin seeded at session start, true for a guest it saw arrive; true or false,
+          no unit.
+      - name: in_cohort
+        logicalType: boolean
+        physicalType: BOOLEAN
+        required: true
+        description: >-
+          Whether the guest was a cohort member when it left; true or false, no unit.
+    quality:
+      - type: sql
+        description: a guest key is at least 1
+        query: SELECT COUNT(*) FROM {object} WHERE guest_key < 1
+        mustBe: 0
+      - type: sql
+        description: the exit reason is one of its two values
+        query: SELECT COUNT(*) FROM {object} WHERE exit_reason NOT IN ('left', 'id_reused')
+        mustBe: 0

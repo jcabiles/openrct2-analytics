@@ -1,0 +1,9 @@
+version: 2
+
+macros:
+  - name: practice_note
+    description: >
+      Returns the registry note that marks a Sandbox (throwaway practice) park
+      as a SQL string literal. The one copy of the text in dbt; the Python
+      copy is `registry_feed.PRACTICE_NOTE` and a test keeps them equal.
+    arguments: []

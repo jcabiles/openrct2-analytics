@@ -1,0 +1,481 @@
+# The park company's metric catalog, finance: the profit and loss tree, revenue and costs by statement month.
+# Part of the catalog in metrics/*.yml: the north star (operating profit per company year), its metric tree and its
+# guardrails, in dbt 1.11's semantic-model and metric YAML shape. Decisions: docs/adr/0016-dbt-design.md.
+# dbt never reads these files; a column no model's YAML has yet is listed under its semantic model's planned_columns.
+semantic_models:
+  - name: finance_month
+    description: >-
+      One closed game month's ledger for one park, read on day 1 of the next month; one row per park and statement
+      month once a reload's repeated statement is resolved.
+    model: ref('stg_finance_month')
+    defaults: {agg_time_dimension: statement_company_date}
+    primary_entity: park_month
+    entities:
+      - {name: park, type: foreign, expr: park_id}
+    dimensions:
+      - {name: statement_company_date, type: time, type_params: {time_granularity: month}}
+      - {name: same_park_current_eligible, type: categorical}
+      - {name: same_park_prior_eligible, type: categorical}
+    measures:
+      - {name: ride_ticket_sales_usd, agg: sum, expr: park_ride_tickets_usd}
+      - {name: food_drink_sales_usd, agg: sum, expr: food_drink_sales_usd}
+      - {name: shop_sales_usd, agg: sum, expr: shop_sales_usd}
+      - {name: entrance_ticket_sales_usd, agg: sum, expr: park_entrance_tickets_usd}
+      - {name: ride_running_costs_usd, agg: sum, expr: ride_runningcosts_usd}
+      - {name: wages_usd, agg: sum, expr: wages_usd}
+      - {name: stock_costs_usd, agg: sum, expr: shop_stock_usd + food_drink_stock_usd}
+      - {name: marketing_usd, agg: sum, expr: marketing_usd}
+      - {name: research_usd, agg: sum, expr: research_usd}
+      - {name: capital_spending_usd, agg: sum, expr: ride_construction_usd + land_purchase_usd + landscaping_usd}
+      - {name: interest_usd, agg: sum, expr: interest_usd}
+    config:
+      meta:
+        row_rules:
+          - kept timeline only (ADR 0006)
+          - one statement per park and statement month
+          - one data set per build, rehearsal or company (ADR 0013)
+          - October of year Y is the first statement on the kept branch after Y's year-end save
+          - every closed park-year has 8 statements, March to October (test owned by roadmap NEXT 6, the year-end close)
+        planned_columns:
+          - name: statement_company_date
+            planned_by: >-
+              ADR 0023 and NEXT 3b, intermediate layer: company_date from the feed's current model
+              (`int_park_registry__current`), year = company start year + (statement game year - game_year_origin), month = statement_month + 3, day 1; never the event's month and day
+          - name: same_park_current_eligible
+            planned_by: >-
+              roadmap NEXT 3b, intermediate layer, from NEXT 6's register of parks expected each company year: the
+              park has a complete kept prior company year (all eight statements, every game day)
+          - name: same_park_prior_eligible
+            planned_by: >-
+              roadmap NEXT 3b, intermediate layer, from NEXT 6's register of parks expected each company year: the
+              park-year is complete on the kept timeline and the park ran the next company year
+          - name: timeline_status
+            planned_by: roadmap NEXT 3b, intermediate layer (save lineage, kept or abandoned)
+          - name: data_set
+            planned_by: ADR 0023 and roadmap NEXT 16 (the park registry feed, current model `int_park_registry__current`); derived in the intermediate layer, roadmap NEXT 3b
+        repoint_to: the finance-month mart (roadmap NEXT 3c)
+
+metrics:
+  - name: operating_profit
+    label: Operating profit
+    description: >-
+      What the company's parks earn from running, before building and borrowing: operating revenue plus operating
+      costs, which the ledger records as negative amounts. The north-star metric. Labeled game operating profit
+      wherever it is compared with real operators' figures: it is not EBITDA, which needs depreciation,
+      amortization and tax detail the game's ledger does not have.
+    type: derived
+    type_params:
+      expr: operating_revenue + operating_costs
+      metrics: [{name: operating_revenue}, {name: operating_costs}]
+    config:
+      meta:
+        unit: usd
+        clock: company date
+        grain: per park per company month; reported per company year and for the company
+        owner: the project owner
+        status: draft
+        role: north_star
+        source_models: [fct_park_month]
+        guardrails: [guest_visits, average_park_rating]
+        reconciled_by: >-
+          operating_profit plus capital_spending plus interest_costs equals the change in (cash_usd minus
+          bank_loan_usd minus new_month_booked_usd) from the previous kept statement, exactly, per park and company month; each park's first
+          statement is exempt (dbt test
+          `assert_park_month_cash_change_reconciles_exactly`, built by roadmap NEXT 28)
+        excludes:
+          - abandoned-timeline rows
+          - a reload's repeated statement
+          - rehearsal and company data in one figure
+          - capital spending and interest costs, which sit outside operating profit
+        roadmap_source: "Gate 1 rulings of 2026-10-03; NEXT 4"
+
+  - name: operating_revenue
+    label: Operating revenue
+    description: >-
+      All money guests paid the parks, for rides, food and drink, merchandise and entry, as the ledger records it.
+    type: derived
+    type_params:
+      expr: ride_revenue + food_drink_revenue + merchandise_revenue + entrance_revenue
+      metrics:
+        - {name: ride_revenue}
+        - {name: food_drink_revenue}
+        - {name: merchandise_revenue}
+        - {name: entrance_revenue}
+    config:
+      meta:
+        unit: usd
+        clock: company date
+        grain: per park per company month; reported per company year and for the company
+        owner: the project owner
+        status: draft
+        role: tree
+        source_models: [stg_finance_month]
+        tree:
+          parent: operating_profit
+          link: identity
+          reconciled_by: &profit_identity >-
+            operating_profit equals operating_revenue plus operating_costs, exactly, per park and company month
+            (planned dbt test, roadmap NEXT 4)
+        excludes: &finance_excludes
+          - abandoned-timeline rows
+          - a reload's repeated statement
+          - rehearsal and company data in one figure
+        roadmap_source: NEXT 4
+
+  - name: ride_revenue
+    label: Ride revenue
+    description: >-
+      Money guests paid to ride, as the ledger records it; never called admissions. On-ride photo sales are not
+      here, because the ledger books them as merchandise.
+    type: simple
+    type_params: {measure: ride_ticket_sales_usd}
+    config:
+      meta:
+        unit: usd
+        clock: company date
+        grain: per park per company month; reported per company year and for the company
+        owner: the project owner
+        status: draft
+        role: tree
+        source_models: [stg_finance_month]
+        tree:
+          parent: operating_revenue
+          link: identity
+          reconciled_by: &revenue_identity >-
+            operating_revenue equals the sum of its four lines, exactly, per park and company month (planned
+            dbt test, roadmap NEXT 4)
+        excludes:
+          - on-ride photo sales (booked as merchandise in the ledger's shop_sales line)
+          - abandoned-timeline rows
+          - a reload's repeated statement
+          - rehearsal and company data in one figure
+        roadmap_source: "NEXT 4; NEXT 7"
+
+  - name: food_drink_revenue
+    label: Food and beverage revenue
+    description: Money guests paid at food and drink stalls, as the ledger records it.
+    type: simple
+    type_params: {measure: food_drink_sales_usd}
+    config:
+      meta:
+        unit: usd
+        clock: company date
+        grain: per park per company month; reported per company year and for the company
+        owner: the project owner
+        status: draft
+        role: tree
+        source_models: [stg_finance_month]
+        tree:
+          parent: operating_revenue
+          link: identity
+          reconciled_by: *revenue_identity
+        excludes: *finance_excludes
+        roadmap_source: "NEXT 4; NEXT 7"
+
+  - name: merchandise_revenue
+    label: Merchandise revenue
+    description: >-
+      Money guests paid for merchandise, at shop stalls and for on-ride photos, which the ledger books together.
+    type: simple
+    type_params: {measure: shop_sales_usd}
+    config:
+      meta:
+        unit: usd
+        clock: company date
+        grain: per park per company month; reported per company year and for the company
+        owner: the project owner
+        status: draft
+        role: tree
+        source_models: [stg_finance_month]
+        tree:
+          parent: operating_revenue
+          link: identity
+          reconciled_by: *revenue_identity
+        excludes: *finance_excludes
+        roadmap_source: "NEXT 4; NEXT 7"
+
+  - name: entrance_revenue
+    label: Entrance revenue
+    description: >-
+      Money guests paid to enter a park. Zero under the company's pay-per-ride rule, but kept so the four revenue
+      lines add up to operating revenue; a planned test asserts zero, an error on company data and a warning on
+      rehearsal data, where an old save may charge entry.
+    type: simple
+    type_params: {measure: entrance_ticket_sales_usd}
+    config:
+      meta:
+        unit: usd
+        clock: company date
+        grain: per park per company month; reported per company year and for the company
+        owner: the project owner
+        status: draft
+        role: tree
+        source_models: [stg_finance_month]
+        tree:
+          parent: operating_revenue
+          link: identity
+          reconciled_by: *revenue_identity
+        excludes: *finance_excludes
+        roadmap_source: "Business rules: the park company; NEXT 4"
+
+  - name: operating_costs
+    label: Operating costs
+    description: >-
+      What running the parks cost: ride upkeep, staff wages, stock, marketing and research. Negative, because the
+      ledger records spending as negative amounts.
+    type: derived
+    type_params:
+      expr: ride_running_costs + staff_wages + stock_costs + marketing_costs + research_costs
+      metrics:
+        - {name: ride_running_costs}
+        - {name: staff_wages}
+        - {name: stock_costs}
+        - {name: marketing_costs}
+        - {name: research_costs}
+    config:
+      meta:
+        unit: usd
+        clock: company date
+        grain: per park per company month; reported per company year and for the company
+        owner: the project owner
+        status: draft
+        role: tree
+        source_models: [stg_finance_month]
+        tree:
+          parent: operating_profit
+          link: identity
+          reconciled_by: *profit_identity
+        excludes: *finance_excludes
+        roadmap_source: "Gate 1 rulings of 2026-10-03; NEXT 4"
+
+  - name: ride_running_costs
+    label: Ride running costs
+    description: What the parks paid to keep their rides running (upkeep); negative.
+    type: simple
+    type_params: {measure: ride_running_costs_usd}
+    config:
+      meta:
+        unit: usd
+        clock: company date
+        grain: per park per company month; reported per company year and for the company
+        owner: the project owner
+        status: draft
+        role: tree
+        source_models: [stg_finance_month]
+        tree:
+          parent: operating_costs
+          link: identity
+          reconciled_by: &cost_identity >-
+            operating_costs equals the sum of its five lines, exactly, per park and company month (planned
+            dbt test, roadmap NEXT 4)
+        excludes: *finance_excludes
+        roadmap_source: NEXT 4
+
+  - name: staff_wages
+    label: Staff wages
+    description: What the parks paid their staff; negative.
+    type: simple
+    type_params: {measure: wages_usd}
+    config:
+      meta:
+        unit: usd
+        clock: company date
+        grain: per park per company month; reported per company year and for the company
+        owner: the project owner
+        status: draft
+        role: tree
+        source_models: [stg_finance_month]
+        tree:
+          parent: operating_costs
+          link: identity
+          reconciled_by: *cost_identity
+        excludes: *finance_excludes
+        roadmap_source: NEXT 4
+
+  - name: stock_costs
+    label: Stock costs
+    description: >-
+      What the parks paid for the stock their stalls sell and for on-ride photos (cost of goods sold); negative.
+    type: simple
+    type_params: {measure: stock_costs_usd}
+    config:
+      meta:
+        unit: usd
+        clock: company date
+        grain: per park per company month; reported per company year and for the company
+        owner: the project owner
+        status: draft
+        role: tree
+        source_models: [stg_finance_month]
+        tree:
+          parent: operating_costs
+          link: identity
+          reconciled_by: *cost_identity
+        excludes: *finance_excludes
+        roadmap_source: NEXT 4
+
+  - name: marketing_costs
+    label: Marketing costs
+    description: What the parks spent on marketing campaigns; negative.
+    type: simple
+    type_params: {measure: marketing_usd}
+    config:
+      meta:
+        unit: usd
+        clock: company date
+        grain: per park per company month; reported per company year and for the company
+        owner: the project owner
+        status: draft
+        role: tree
+        source_models: [stg_finance_month]
+        tree:
+          parent: operating_costs
+          link: identity
+          reconciled_by: *cost_identity
+        excludes: *finance_excludes
+        roadmap_source: NEXT 4
+
+  - name: research_costs
+    label: Research costs
+    description: What the parks spent researching new rides and stalls; negative.
+    type: simple
+    type_params: {measure: research_usd}
+    config:
+      meta:
+        unit: usd
+        clock: company date
+        grain: per park per company month; reported per company year and for the company
+        owner: the project owner
+        status: draft
+        role: tree
+        source_models: [stg_finance_month]
+        tree:
+          parent: operating_costs
+          link: identity
+          reconciled_by: *cost_identity
+        excludes: *finance_excludes
+        roadmap_source: NEXT 4
+
+  - name: capital_spending
+    label: Capital spending
+    description: >-
+      What the parks spent building: ride construction, land and landscaping; negative. Outside operating profit;
+      with operating profit and interest costs it accounts for every change in cash less loan, less the money already booked to the new month.
+    type: simple
+    type_params: {measure: capital_spending_usd}
+    config:
+      meta:
+        unit: usd
+        clock: company date
+        grain: per park per company month; reported per company year and for the company
+        owner: the project owner
+        status: draft
+        role: supporting
+        source_models: [stg_finance_month]
+        excludes: *finance_excludes
+        roadmap_source: "NEXT 4; ADR 0012"
+
+  - name: interest_costs
+    label: Interest costs
+    description: >-
+      Interest paid on the bank loan; negative. Outside operating profit, because it is a cost of borrowing; with
+      operating profit and capital spending it accounts for every change in cash less loan, less the money already booked to the new month.
+    type: simple
+    type_params: {measure: interest_usd}
+    config:
+      meta:
+        unit: usd
+        clock: company date
+        grain: per park per company month; reported per company year and for the company
+        owner: the project owner
+        status: draft
+        role: supporting
+        source_models: [stg_finance_month]
+        excludes: *finance_excludes
+        roadmap_source: NEXT 4
+
+  - name: same_park_operating_revenue_yoy
+    label: "Same-park (like-for-like) growth: operating revenue"
+    description: >-
+      The like-for-like change in operating revenue against the prior company year, as a fraction of the prior
+      year, same parks only.
+    type: derived
+    type_params:
+      expr: (operating_revenue - operating_revenue_prior_year) / operating_revenue_prior_year
+      metrics:
+        - name: operating_revenue
+          filter: "{{ Dimension('park_month__same_park_current_eligible') }} = true"
+        - name: operating_revenue
+          alias: operating_revenue_prior_year
+          offset_window: 1 year
+          filter: "{{ Dimension('park_month__same_park_prior_eligible') }} = true"
+    config:
+      meta:
+        unit: fraction of the prior year
+        clock: company date
+        grain: &same_park_grain >-
+          per park per company year; reported per park and for the eligible parks together; queried by
+          metric_time at year grain
+        owner: the project owner
+        status: draft
+        role: supporting
+        source_models: [stg_finance_month]
+        excludes: &same_park_excludes
+          - parks without a complete prior company year (listed separately)
+          - abandoned-timeline rows
+          - rehearsal and company data in one figure
+        roadmap_source: "NEXT 13; ADR 0012"
+
+  - name: same_park_operating_profit_yoy
+    label: "Same-park (like-for-like) growth: operating profit"
+    description: >-
+      The like-for-like change in operating profit against the prior company year, as a fraction of the prior
+      year, same parks only. Not meaningful after a loss year, so both years are shown beside it.
+    type: derived
+    type_params:
+      expr: (operating_profit - operating_profit_prior_year) / operating_profit_prior_year
+      metrics:
+        - name: operating_profit
+          filter: "{{ Dimension('park_month__same_park_current_eligible') }} = true"
+        - name: operating_profit
+          alias: operating_profit_prior_year
+          offset_window: 1 year
+          filter: "{{ Dimension('park_month__same_park_prior_eligible') }} = true"
+    config:
+      meta:
+        unit: fraction of the prior year
+        clock: company date
+        grain: *same_park_grain
+        owner: the project owner
+        status: draft
+        role: supporting
+        source_models: [stg_finance_month]
+        excludes: *same_park_excludes
+        roadmap_source: "NEXT 13; ADR 0012"
+
+  - name: same_park_operating_costs_yoy
+    label: "Same-park (like-for-like) growth: operating costs"
+    description: >-
+      The like-for-like change in operating costs against the prior company year, as a fraction of the prior
+      year, same parks only. Both years are negative, so a positive figure means spending grew.
+    type: derived
+    type_params:
+      expr: (operating_costs - operating_costs_prior_year) / operating_costs_prior_year
+      metrics:
+        - name: operating_costs
+          filter: "{{ Dimension('park_month__same_park_current_eligible') }} = true"
+        - name: operating_costs
+          alias: operating_costs_prior_year
+          offset_window: 1 year
+          filter: "{{ Dimension('park_month__same_park_prior_eligible') }} = true"
+    config:
+      meta:
+        unit: fraction of the prior year
+        clock: company date
+        grain: *same_park_grain
+        owner: the project owner
+        status: draft
+        role: supporting
+        source_models: [stg_finance_month]
+        excludes: *same_park_excludes
+        roadmap_source: "NEXT 13; ADR 0012"

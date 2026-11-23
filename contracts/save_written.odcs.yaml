@@ -1,0 +1,37 @@
+apiVersion: v3.2.0
+kind: DataContract
+id: save_written
+name: save_written
+version: 1.8.0
+status: active
+description:
+  purpose: Save written payload, one event per save the plugin saw.
+servers:
+  - server: parquet_through_duckdb
+    type: duckdb
+    database: __DATABASE__
+    schema: main
+schema:
+  - name: save_written
+    physicalType: view
+    description: >-
+      One row per save_written event: one per save (a plugin save, an autosave or Save Game As), sent from the
+      game's save hook by plugin 0.3.0 and later. The data is Parquet (v1/save_written.parquet), checked through a
+      throwaway DuckDB view. The event marks where the save cut its session: its own seq is the exact cut, so every
+      event of that session with a lower seq was created before the save. When the event is lost (the game quit
+      with it still queued), the save's stored seq floor and waiting-line count place the cut instead: the event
+      would have taken seq floor + waiting + 1, unless the queue dropped lines ahead of it, which
+      plugin_stats.lines_dropped_total counts. A later session reports those stored values in session_start as
+      loaded_save_seq_floor and loaded_save_lines_waiting. If park storage fails after the plugin has stored a new
+      save_id, the saved file can carry that save_id beside an earlier save's session, floor and waiting count, with
+      no save_written for that ID.
+    properties:
+      - name: save_id
+        logicalType: string
+        physicalType: VARCHAR
+        required: true
+        primaryKey: true
+        primaryKeyPosition: 1
+        description: >-
+          Save identifier the plugin minted in the save hook and stored in the saved file; text, no unit. Minted once
+          per save, so it is the grain on its own.

@@ -1,0 +1,18 @@
+{%- from "figure.njk" import figure as region -%}
+{%- set monthFig = "park-month" | figure(exports) -%}
+{% call region(monthFig) %}
+<figure id="park-month-chart" role="img" aria-label="{{ monthFig.chartLabel }}"></figure>
+<details class="vals"><summary>Show the values</summary>
+<div class="tbl-wrap"><table id="park-month-table" class="tbl">
+  <caption>{{ monthFig.caption }}</caption>
+  <thead><tr>{% for header in monthFig.headers %}<th scope="col">{{ header }}</th>{% endfor %}</tr></thead>
+  <tbody>
+    {%- for row in monthFig.rows %}
+    <tr><th scope="row">{{ row.month | monthLabel }}{% if row.first_of_park %} <span>({{ monthFig.firstMark }})</span>{% endif %}</th><td>{{ row.operating_profit | usd }}</td></tr>
+    {%- endfor %}
+  </tbody>
+</table></div>
+</details>
+{%- set cut = monthFig.trace.lastIndexOf(": ") + 2 -%}
+<p class="trace">{{ monthFig.trace.slice(0, cut) }}<code>{{ monthFig.trace.slice(cut, -1) }}</code>.</p>
+{% endcall %}

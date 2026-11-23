@@ -1,0 +1,121 @@
+apiVersion: v3.2.0
+kind: DataContract
+id: guest_snapshot
+name: guest_snapshot
+version: 1.8.0
+status: active
+description:
+  purpose: One daily event per member of the random guest sample.
+servers:
+  - server: parquet_through_duckdb
+    type: duckdb
+    database: __DATABASE__
+    schema: main
+schema:
+  - name: guest_snapshot
+    physicalType: view
+    description: >-
+      One row per cohort member per game day, sent by plugin 0.4.0 and later: a random sample of guests, chosen
+      when each guest is generated or seeded and kept until the guest leaves, read at the daily guest step after
+      the exit check. The data is Parquet (v1/guest_snapshot.parquet), checked through a throwaway DuckDB view.
+      Each arriving guest joins the cohort with probability 0.5 while fewer than 100 are in it, so once the cohort is
+      full later arrivals cannot join and the sample is not constant-probability; observations of it are
+      observational, not an experiment.
+      Every game reading is optional because a read can fail; items_carried is always present and empty when the
+      guest carries nothing.
+    properties:
+      - name: guest_key
+        logicalType: integer
+        physicalType: INTEGER
+        required: true
+        logicalTypeOptions:
+          minimum: 1
+        description: >-
+          Minted by the plugin, unique within one session; the pair (session_id, guest_key) names a guest. A
+          whole number, no unit.
+      - name: guest_id
+        logicalType: integer
+        physicalType: INTEGER
+        required: true
+        logicalTypeOptions:
+          minimum: 0
+        description: >-
+          The game's guest entity slot number, a whole number; the game reuses a slot, so it is not an identity
+          (use guest_key).
+      - name: happiness
+        logicalType: integer
+        physicalType: INTEGER
+        required: false
+        logicalTypeOptions:
+          minimum: 0
+          maximum: 255
+        description: >-
+          Guest happiness as read, 0 (unhappy) to 255 (happy); a game unit, no other unit.
+      - name: hunger
+        logicalType: integer
+        physicalType: INTEGER
+        required: false
+        logicalTypeOptions:
+          minimum: 0
+          maximum: 255
+        description: >-
+          Guest hunger as read, 0 to 255; a game unit, no other unit.
+      - name: thirst
+        logicalType: integer
+        physicalType: INTEGER
+        required: false
+        logicalTypeOptions:
+          minimum: 0
+          maximum: 255
+        description: >-
+          Guest thirst as read, 0 to 255; a game unit, no other unit.
+      - name: nausea
+        logicalType: integer
+        physicalType: INTEGER
+        required: false
+        logicalTypeOptions:
+          minimum: 0
+          maximum: 255
+        description: >-
+          Guest nausea as read, 0 to 255; a game unit, no other unit.
+      - name: energy
+        logicalType: integer
+        physicalType: INTEGER
+        required: false
+        logicalTypeOptions:
+          minimum: 32
+          maximum: 128
+        description: >-
+          Guest energy as read, 32 to 128; a game unit, no other unit.
+      - name: guest_cash_tenths
+        logicalType: integer
+        physicalType: BIGINT
+        required: false
+        description: >-
+          The guest's cash at the read, in tenths of a dollar (game money unit).
+      - name: items_carried
+        logicalType: string
+        physicalType: VARCHAR
+        required: true
+        description: >-
+          The names of the items the guest carries (the game's GuestItemType names) joined with |, in the order
+          the game returns them; the empty string for none. Text, no unit. The contract cannot check the names.
+      - name: thought_type
+        logicalType: string
+        physicalType: VARCHAR
+        required: false
+        description: >-
+          Type of the guest's newest thought (the first in the game's list); text, no unit; null when the guest
+          has no thought.
+      - name: thought_item
+        logicalType: integer
+        physicalType: INTEGER
+        required: false
+        description: >-
+          The newest thought's item as read, a whole number whose meaning depends on thought_type (a ride slot
+          number for a refusal); 65535 when the thought has no argument; null when the guest has no thought.
+    quality:
+      - type: sql
+        description: a guest key is at least 1
+        query: SELECT COUNT(*) FROM {object} WHERE guest_key < 1
+        mustBe: 0

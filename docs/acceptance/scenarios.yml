@@ -1,0 +1,168 @@
+# The park company's v1 acceptance scenarios: business questions the company's owner must be able to answer from the site.
+# Each cites catalog metrics by name (metrics/*.yml) and takes its unit and clock from them; tests/test_acceptance_scenarios.py
+# checks every rule. Results go in docs/acceptance/walkthrough-<YYYY-MM-DD>.md.
+about: >-
+  A one-person acceptance test for v1. The project owner answers each scenario using only the site, with no query
+  tool and no repository. Steps: (1) answer each scenario from the site; (2) record pass, fail or not-answerable with
+  a one-line note, where not-answerable is a legitimate result and is logged as a defect; (3) log each defect;
+  (4) write a dated go/no-go note that names the sample of parks and says one person ran the test. The results go in
+  docs/acceptance/walkthrough-<YYYY-MM-DD>.md. Every answer is observational. The walkthrough runs on the v1 site's rehearsal
+  data (two parks, more than one company year), not on the committed one-park, one-year sample. The walkthrough does not cover weather
+  or umbrella questions until NEXT 18 defines those metrics; then weather and umbrella scenarios are added to this file
+  and the weather rule in tests/test_acceptance_scenarios.py is relaxed.
+scenarios:
+  - id: AS-01
+    process: finance
+    question: "How much operating profit did our company report in the last completed company year?"
+    metrics: [operating_profit]
+    unit: usd
+    clock: company date
+    parks: company
+    grain: one completed company year, whole company
+    correct_answer_form: "One dollar total, with guest visits as a count and average park rating on its 0 to 999 scale beside it."
+    observational: true
+    guardrails: [guest_visits, average_park_rating]
+
+  - id: AS-02
+    process: finance
+    question: "Which of our two rehearsal parks reported more operating profit in the same completed company year?"
+    metrics: [operating_profit]
+    unit: usd
+    clock: company date
+    parks: both
+    grain: same completed company year, each rehearsal park
+    correct_answer_form: "The higher park and one dollar total for each park."
+    observational: true
+
+  - id: AS-03
+    process: finance
+    question: "What were operating revenue and operating costs at one of our parks in a completed company year?"
+    metrics: [operating_revenue, operating_costs]
+    unit: usd
+    clock: company date
+    parks: one
+    grain: one completed company year, one park
+    correct_answer_form: "Two dollar totals, with costs shown using their ledger sign."
+    observational: true
+
+  - id: AS-04
+    process: admissions
+    question: "Which of our two rehearsal parks had more guest visits in the same company month?"
+    metrics: [guest_visits]
+    unit: count
+    clock: company date
+    parks: both
+    grain: same company month, each rehearsal park
+    correct_answer_form: "The higher park and a visit count for each park."
+    observational: true
+
+  - id: AS-05
+    process: admissions
+    question: "What was the average park rating at one of our parks in the last completed company year?"
+    metrics: [average_park_rating]
+    unit: engine units, 0 to 999
+    clock: company date
+    parks: one
+    grain: one completed company year, one park
+    correct_answer_form: "One average rating on the game's 0 to 999 scale."
+    observational: true
+
+  - id: AS-06
+    process: admissions
+    question: "How did guest visits change at each of our two rehearsal parks in a completed company year versus its prior year?"
+    metrics: [same_park_guest_visits_yoy]
+    unit: fraction of the prior year
+    clock: company date
+    parks: both
+    grain: same completed company year versus its prior year, each rehearsal park
+    correct_answer_form: "One fraction of the prior year per eligible park, with any park lacking a complete prior-year baseline identified."
+    observational: true
+
+  - id: AS-07
+    process: ride_operations
+    question: "Which three rides made the most profit at one of our parks in the last completed company year?"
+    metrics: [ride_profit]
+    unit: usd
+    clock: company date
+    parks: one
+    grain: one completed company year, rides at one park
+    correct_answer_form: "A ranked list of up to three rides with a dollar profit for each."
+    observational: true
+
+  - id: AS-08
+    process: ride_operations
+    question: "Which three rides at one of our parks had the most boardings per open day in a completed company year?"
+    metrics: [ride_popularity]
+    unit: boardings per open day
+    clock: company date
+    parks: one
+    grain: one completed company year, rides at one park
+    correct_answer_form: "A ranked list of up to three rides with boardings per open day for each."
+    observational: true
+
+  - id: AS-09
+    process: ride_operations
+    question: "Which three rides recorded the most boardings at one of our parks on a selected company day?"
+    metrics: [ride_boardings]
+    unit: count
+    clock: company date
+    parks: one
+    grain: one company day, rides at one park
+    correct_answer_form: "A ranked list of up to three rides with a boarding count for each."
+    observational: true
+
+  - id: AS-10
+    process: stall_sales
+    question: "Which three stalls made the most profit at one of our parks in a completed company year?"
+    metrics: [stall_profit]
+    unit: usd
+    clock: company date
+    parks: one
+    grain: one completed company year, stalls and their item codes at one park
+    correct_answer_form: "A ranked list of up to three stalls with item codes and dollar profit; a two-item stall stays under its item pair."
+    observational: true
+
+  - id: AS-11
+    process: stall_sales
+    question: "Which three single-item stalls sold the most units at one of our parks in a completed company year?"
+    metrics: [stall_units_sold]
+    unit: count
+    clock: company date
+    parks: one
+    grain: one completed company year, single-item stalls at one park
+    correct_answer_form: "A ranked list of up to three single-item stalls with item codes and unit counts."
+    observational: true
+
+  - id: AS-12
+    process: stall_sales
+    question: "Which three food or drink items brought in the most stall revenue at one of our parks in a completed company year?"
+    metrics: [food_drink_revenue_by_item]
+    unit: usd
+    clock: company date
+    parks: one
+    grain: one completed company year, food and drink item codes at one park
+    correct_answer_form: "A ranked list of up to three item codes with dollar revenue; a two-item stall stays under its item pair."
+    observational: true
+
+  - id: AS-13
+    process: company
+    question: "How did our company's guest visits change in the last completed company year versus the prior year?"
+    metrics: [company_guest_visits_yoy]
+    unit: fraction of the prior year
+    clock: company date
+    parks: company
+    grain: last completed company year versus prior company year, all parks together
+    correct_answer_form: "One fraction of the prior year, with first-season parks included in the company total."
+    observational: true
+
+  - id: AS-14
+    process: company
+    question: "How did our company's operating profit change in the last completed company year versus the prior year?"
+    metrics: [company_operating_profit_yoy]
+    guardrails: [operating_profit]
+    unit: fraction of the prior year
+    clock: company date
+    parks: company
+    grain: last completed company year versus prior company year, all parks together
+    correct_answer_form: "One fraction of the prior year, or 'not meaningful' when the prior year was a loss, with both years' operating profit in usd shown beside it."
+    observational: true

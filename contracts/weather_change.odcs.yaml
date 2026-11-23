@@ -1,0 +1,75 @@
+apiVersion: v3.2.0
+kind: DataContract
+id: weather_change
+name: weather_change
+version: 1.8.0
+status: active
+description:
+  purpose: Weather change payload, one event per change of the park's weather type the plugin observed.
+servers:
+  - server: parquet_through_duckdb
+    type: duckdb
+    database: __DATABASE__
+    schema: main
+schema:
+  - name: weather_change
+    physicalType: view
+    description: >-
+      One row per observed change of the park's weather type, sent by plugin 0.5.0 and later. The data is Parquet
+      (v1/weather_change.parquet), checked through a throwaway DuckDB view. The plugin reads the weather every tick,
+      so the row's game_ticks_elapsed is the tick the plugin first saw the change (game clock). At most one change is
+      seen per tick, so the session and the tick are the key; a change and a change back inside one tick cannot be
+      observed. The plugin's first read of a session sets the starting weather and sends nothing, so the first row is
+      the first real change and a session with no change has no row. A change of temperature alone sends nothing; the
+      day's temperature stays in park_snapshot.
+    properties:
+      - name: session_id
+        logicalType: string
+        physicalType: VARCHAR
+        required: true
+        primaryKey: true
+        primaryKeyPosition: 1
+        description: Plugin start identifier; text, no unit. Part of the key.
+      - name: game_ticks_elapsed
+        logicalType: integer
+        physicalType: BIGINT
+        required: true
+        primaryKey: true
+        primaryKeyPosition: 2
+        description: >-
+          Game ticks since the park began, a count; game clock. The tick at which the plugin first saw the change.
+          Part of the key.
+      - name: weather
+        logicalType: string
+        physicalType: VARCHAR
+        required: true
+        description: >-
+          The weather after the change, as the game names it; text, no unit; game clock: the tick the plugin first saw
+          the change.
+      - name: previous_weather
+        logicalType: string
+        physicalType: VARCHAR
+        required: true
+        description: >-
+          The weather before the change, from the plugin's last read; text, no unit; game clock: the tick the plugin
+          first saw the change (the value itself was read earlier).
+      - name: upcoming_weather
+        logicalType: string
+        physicalType: VARCHAR
+        required: false
+        description: >-
+          The game's upcoming weather when the change was seen, as the game names it; text, no unit; null when the
+          game gives no text. Game clock: the tick the plugin first saw the change.
+      - name: temperature_c
+        logicalType: integer
+        physicalType: INTEGER
+        required: false
+        description: >-
+          The park's current temperature at the change, in degrees Celsius (the unit is unverified against the real
+          game, as for park_snapshot.temperature_c), may be negative; game clock: the tick the plugin first saw the
+          change.
+    quality:
+      - type: sql
+        description: a change has a different weather from the one before it
+        query: SELECT COUNT(*) FROM {object} WHERE weather = previous_weather
+        mustBe: 0

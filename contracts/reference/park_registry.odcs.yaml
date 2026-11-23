@@ -1,0 +1,67 @@
+apiVersion: v3.2.0
+kind: DataContract
+id: park_registry
+name: park_registry
+version: 1.0.0
+status: active
+description:
+  purpose: >-
+    Park registry feed: one row per park per delivery file, saying which year of the company's calendar a park's
+    first game year is.
+servers:
+  - server: csv_through_duckdb
+    type: duckdb
+    database: __DATABASE__
+    schema: main
+schema:
+  - name: park_registry
+    physicalType: view
+    description: >-
+      One row per park per delivery. CSV files named
+      park_registry_<YYYY-MM-DD>_<NN>.csv land under registry/v1/. Company deliveries come from `make register-parks` (ADR 0038); for
+      rehearsal captures made by the rehearsal capture command (`make capture-rehearsal`), that command writes
+      them. The committed rehearsal sample's file is hand-written. Deliveries are append-only except for a
+      pre-go-live company delete (ADR 0033). The check reads them all through one throwaway
+      DuckDB view. This contract is its own version line, separate from the plugin's event contracts, and declares
+      no uniqueness rule: which delivery is current is judged in dbt, so one bad file cannot turn this check red for
+      good.
+    properties:
+      - name: park_id
+        logicalType: string
+        physicalType: VARCHAR
+        required: true
+        description: The park's identifier, the same text the plugin sends as park_id; no unit.
+      - name: company_start_year
+        logicalType: integer
+        physicalType: BIGINT
+        required: true
+        description: The company calendar year in which the park's first game year falls; a whole calendar year, no unit.
+      - name: game_year_origin
+        logicalType: integer
+        physicalType: BIGINT
+        required: true
+        logicalTypeOptions:
+          minimum: 1
+        description: >-
+          The game year that counts as the park's first company year; the game's game_year starts at 1, so the
+          value is at least 1. A whole number of game years, no unit.
+      - name: data_set
+        logicalType: string
+        physicalType: VARCHAR
+        required: true
+        description: The data set the row belongs to, rehearsal or company; text.
+      - name: note
+        logicalType: string
+        physicalType: VARCHAR
+        required: false
+        description: Free text from the delivery; may be empty.
+      - name: delivered_on
+        logicalType: date
+        physicalType: DATE
+        required: true
+        description: The calendar date the delivery was made; a date, no time.
+    quality:
+      - type: sql
+        description: data_set is rehearsal or company
+        query: SELECT COUNT(*) FROM {object} WHERE data_set NOT IN ('rehearsal', 'company')
+        mustBe: 0

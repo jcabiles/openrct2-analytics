@@ -1,0 +1,38 @@
+version: 2
+
+models:
+  - name: stg_session_play_mode
+    description: >-
+      Answers who played each labeled session, the project owner (managed) or the autopilot helper (autopilot), as
+      the play-mode label feed states it, so session and year models can tell the two apart. Grain: one row per
+      labeled session; key: session_id. A session with no row is managed, which stg_session_start applies. A data set
+      with no label file yet builds this model with zero rows instead of failing. Renames and casts only: `filename`
+      becomes `delivery_file` and `delivered_on` becomes a date. The model has no unit and no clock of its own.
+    meta:
+      contract_version: 1.0.0
+      expected_min_rows: 0
+    columns:
+      - name: session_id
+        description: "The session's identifier, the same text the plugin sends; no unit; no clock."
+        data_tests: [not_null, unique]
+      - name: park_id
+        description: "The park's identifier, the same text the plugin sends; no unit; no clock."
+        data_tests: [not_null]
+      - name: play_mode
+        description: "Who played the session, managed or autopilot; text; no unit; no clock."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [managed, autopilot]
+      - name: ready_confirmation
+        description: "Empty, or exactly the park's ready phrase, which a park's first autopilot row carries; text; no unit; no clock."
+      - name: data_set
+        description: "Data set the row belongs to, rehearsal or company; text; no unit; no clock."
+        data_tests: [not_null]
+      - name: delivered_on
+        description: "Calendar date of the delivery, equal to the date in the file name, no time; no unit; clock: wall-clock delivery date."
+        data_tests: [not_null]
+      - name: delivery_file
+        description: "Path of the delivery file as the folder was globbed, relative on dev and ci, absolute in a publish; text; no unit; no clock."
+        data_tests: [not_null]

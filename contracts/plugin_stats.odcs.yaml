@@ -1,0 +1,398 @@
+apiVersion: v3.2.0
+kind: DataContract
+id: plugin_stats
+name: plugin_stats
+version: 1.8.0
+status: active
+description:
+  purpose: Daily plugin self-timing and health counters.
+servers:
+  - server: parquet_through_duckdb
+    type: duckdb
+    database: __DATABASE__
+    schema: main
+schema:
+  - name: plugin_stats
+    physicalType: view
+    description: >-
+      The plugin's own health, one event per game day, emitted just before that day's park_snapshot (stats at seq n,
+      snapshot at n + 1). The data is Parquet (v1/plugin_stats.parquet), checked through a throwaway DuckDB view.
+      Blind spots: the last period of a session is never reported, because stats are emitted only at the next day
+      callback; a game speed change inside a period is invisible, because game_speed is sampled once, at the day callback;
+      a finance month left unread on a session's last day is never counted in finance_months_unread_total, because the
+      counter is emitted before that day's statement is attempted.
+    properties:
+      - name: period_start_ticks
+        logicalType: integer
+        physicalType: BIGINT
+        required: true
+        logicalTypeOptions:
+          minimum: 0
+        description: Game tick at the start of the period since the previous day callback, in game ticks (game clock).
+      - name: period_end_ticks
+        logicalType: integer
+        physicalType: BIGINT
+        required: true
+        logicalTypeOptions:
+          minimum: 0
+        description: Game tick at the end of the period, in game ticks (game clock).
+      - name: period_ticks
+        logicalType: integer
+        physicalType: BIGINT
+        required: true
+        logicalTypeOptions:
+          minimum: 0
+        description: Ticks in the period, a count in game ticks (game clock); ticks with no plugin work count as 0 ms.
+      - name: work_ms_total
+        logicalType: number
+        physicalType: DOUBLE
+        required: true
+        logicalTypeOptions:
+          minimum: 0
+        description: Plugin work in the period, in milliseconds of wall-clock time.
+      - name: worst_tick_ms
+        logicalType: number
+        physicalType: DOUBLE
+        required: true
+        logicalTypeOptions:
+          minimum: 0
+        description: Plugin work in the period's worst single tick, in milliseconds of wall-clock time.
+      - name: worst_tick_at_ticks
+        logicalType: integer
+        physicalType: BIGINT
+        required: true
+        logicalTypeOptions:
+          minimum: 0
+        description: Game tick at which the worst tick happened, in game ticks (game clock).
+      - name: callbacks
+        logicalType: integer
+        physicalType: INTEGER
+        required: true
+        logicalTypeOptions:
+          minimum: 0
+        description: Plugin callbacks timed in the period, a count.
+      - name: warmup
+        logicalType: boolean
+        physicalType: BOOLEAN
+        required: true
+        description: True for the first period of a session, which includes startup; reported, never judged.
+      - name: clock
+        logicalType: string
+        physicalType: VARCHAR
+        required: true
+        description: Wall-clock source used for timing, performance or date; text, no unit.
+      - name: game_speed
+        logicalType: integer
+        physicalType: INTEGER
+        required: true
+        logicalTypeOptions:
+          minimum: 0
+        description: Game speed setting sampled once at the day callback; engine speed steps, no unit.
+      - name: lines_dropped_total
+        logicalType: integer
+        physicalType: BIGINT
+        required: true
+        logicalTypeOptions:
+          minimum: 0
+        description: Lines dropped from the plugin queue, session cumulative count.
+      - name: write_partial_total
+        logicalType: integer
+        physicalType: BIGINT
+        required: true
+        logicalTypeOptions:
+          minimum: 0
+        description: "Times `Socket.write` returned true, meaning only part of the line was sent: a loss after hand-off. The cut line runs into the next line in the listener, so both land in the malformed file and one partial send can lose two events, which shows as a seq gap."
+      - name: write_error_total
+        logicalType: integer
+        physicalType: BIGINT
+        required: true
+        logicalTypeOptions:
+          minimum: 0
+        description: Times Socket.write threw, session cumulative count.
+      - name: connect_attempts_total
+        logicalType: integer
+        physicalType: BIGINT
+        required: true
+        logicalTypeOptions:
+          minimum: 0
+        description: Socket connection attempts, session cumulative count.
+      - name: queue_length
+        logicalType: integer
+        physicalType: INTEGER
+        required: true
+        logicalTypeOptions:
+          minimum: 0
+        description: Lines waiting in the plugin queue at emit time, a count.
+      - name: finance_months_unread_total
+        logicalType: integer
+        physicalType: BIGINT
+        required: false
+        logicalTypeOptions:
+          minimum: 0
+        description: >-
+          Month statements the plugin could not read because a finance history was too short, session cumulative
+          count; absent in events from plugin 0.1.0. An increment shows in the next game day's event.
+      - name: work_units_total
+        logicalType: integer
+        physicalType: BIGINT
+        required: false
+        logicalTypeOptions:
+          minimum: 0
+        description: >-
+          Work items the plugin has run, session cumulative count (hand-offs of queued lines are not counted); absent
+          in events from plugins before 0.3.0.
+      - name: work_items_skipped_total
+        logicalType: integer
+        physicalType: BIGINT
+        required: false
+        logicalTypeOptions:
+          minimum: 0
+        description: >-
+          Queued work items skipped because a new game day arrived before they ran, session cumulative count; absent
+          in events from plugins before 0.3.0.
+      - name: work_queue_length
+        logicalType: integer
+        physicalType: INTEGER
+        required: false
+        logicalTypeOptions:
+          minimum: 0
+        description: >-
+          Day-scoped work items still waiting when the row was built (continuous arrival and boarder items are counted in continuous_items_pending instead), a count, read before that day's work is queued, so it
+          describes the previous day's work; absent in events from plugins before 0.3.0.
+      - name: work_items_failed_total
+        logicalType: integer
+        physicalType: BIGINT
+        required: false
+        logicalTypeOptions:
+          minimum: 0
+        description: >-
+          Work steps and seat polls that threw an error, session cumulative count; absent in events from
+          plugins before 0.4.0.
+      - name: worst_step_ms
+        logicalType: number
+        physicalType: DOUBLE
+        required: false
+        logicalTypeOptions:
+          minimum: 0
+        description: >-
+          Time of the period's longest single work step, in milliseconds of wall-clock time; 0 when no step
+          ran; absent in events from plugins before 0.4.0.
+      - name: worst_step_kind
+        logicalType: string
+        physicalType: VARCHAR
+        required: false
+        description: >-
+          The kind of the period's longest work step; text, no unit; null when no step ran; absent in events
+          from plugins before 0.4.0.
+      - name: worst_tick_kind_ms
+        logicalType: string
+        physicalType: VARCHAR
+        required: false
+        description: >-
+          The period's worst tick split by where its time went: name:ms pairs joined by | over the work step
+          kinds (action, the send of buffered game actions, among them) and the parts weather, action_query,
+          action_execute, day_callback and other, summing to worst_tick_ms; milliseconds of wall-clock time inside
+          each pair; text; absent in events from plugins before 0.4.0. The parts action_query and action_execute
+          appear only in events from plugins 0.7.0 and later.
+      - name: worst_day_start_tick_ms
+        logicalType: number
+        physicalType: DOUBLE
+        required: false
+        logicalTypeOptions:
+          minimum: 0
+        description: >-
+          The period's highest whole-tick plugin time over its day-start ticks (the day callback's tick and
+          every later tick until the day's ride items are done, on which no guest step runs), in milliseconds
+          of wall-clock time; absent in events from plugins before 0.4.0.
+      - name: guest_fields_ms_total
+        logicalType: number
+        physicalType: DOUBLE
+        required: false
+        logicalTypeOptions:
+          minimum: 0
+        description: >-
+          The period's summed time of the five boarding guest-field reads, in milliseconds of wall-clock time;
+          absent in events from plugins before 0.4.0.
+      - name: continuous_items_pending
+        logicalType: integer
+        physicalType: INTEGER
+        required: false
+        logicalTypeOptions:
+          minimum: 0
+        description: >-
+          Arrival and boarder items not yet run when the row was built, a count; absent in events from plugins
+          before 0.4.0.
+      - name: lines_queued_max
+        logicalType: integer
+        physicalType: INTEGER
+        required: false
+        logicalTypeOptions:
+          minimum: 0
+        description: >-
+          The period's highest emitter queue length, a count of lines; absent in events from plugins before
+          0.4.0.
+      - name: guests_known
+        logicalType: integer
+        physicalType: INTEGER
+        required: false
+        logicalTypeOptions:
+          minimum: 0
+        description: >-
+          Size of the known-guest table, a count of guests; absent in events from plugins before 0.4.0.
+      - name: guests_known_in_park
+        logicalType: integer
+        physicalType: INTEGER
+        required: false
+        logicalTypeOptions:
+          minimum: 0
+        description: >-
+          Known guests whose latest read found isInPark true, a count of guests; absent in events from plugins
+          before 0.4.0.
+      - name: arrivals_recorded_total
+        logicalType: integer
+        physicalType: BIGINT
+        required: false
+        logicalTypeOptions:
+          minimum: 0
+        description: >-
+          Guest-generation hook calls the plugin recorded, session cumulative count; absent in events from
+          plugins before 0.4.0.
+      - name: boarding_polls_total
+        logicalType: integer
+        physicalType: BIGINT
+        required: false
+        logicalTypeOptions:
+          minimum: 0
+        description: >-
+          Seat polls that ran to completion, session cumulative count; absent in events from plugins before
+          0.4.0.
+      - name: boarders_queued_total
+        logicalType: integer
+        physicalType: BIGINT
+        required: false
+        logicalTypeOptions:
+          minimum: 0
+        description: >-
+          New boarders the completed seat polls recorded, session cumulative count; absent in events from
+          plugins before 0.4.0.
+      - name: game_actions_sent_preview_total
+        logicalType: integer
+        physicalType: BIGINT
+        required: false
+        logicalTypeOptions:
+          minimum: 0
+        description: >-
+          Game-action events labeled preview that the plugin handed to the emitter, session cumulative count; absent in
+          events from plugins before 0.7.0.
+      - name: game_actions_sent_prediction_total
+        logicalType: integer
+        physicalType: BIGINT
+        required: false
+        logicalTypeOptions:
+          minimum: 0
+        description: >-
+          Game-action events labeled prediction that the plugin handed to the emitter, session cumulative count; absent in
+          events from plugins before 0.7.0.
+      - name: game_actions_sent_confirmed_total
+        logicalType: integer
+        physicalType: BIGINT
+        required: false
+        logicalTypeOptions:
+          minimum: 0
+        description: >-
+          Game-action events labeled confirmed that the plugin handed to the emitter, session cumulative count; absent in
+          events from plugins before 0.7.0.
+      - name: game_actions_dropped_preview_total
+        logicalType: integer
+        physicalType: BIGINT
+        required: false
+        logicalTypeOptions:
+          minimum: 0
+        description: >-
+          Game-action calls labeled preview that the plugin dropped because its buffer was full, session cumulative
+          count; calls the plugin skips by name, sub-type or preview are counted in the game_actions_skipped_ fields
+          instead; absent in events from plugins before 0.7.0.
+      - name: game_actions_dropped_prediction_total
+        logicalType: integer
+        physicalType: BIGINT
+        required: false
+        logicalTypeOptions:
+          minimum: 0
+        description: >-
+          Game-action calls labeled prediction that the plugin dropped because its buffer was full, session cumulative
+          count; calls the plugin skips by name, sub-type or preview are counted in the game_actions_skipped_ fields
+          instead; absent in events from plugins before 0.7.0.
+      - name: game_actions_dropped_confirmed_total
+        logicalType: integer
+        physicalType: BIGINT
+        required: false
+        logicalTypeOptions:
+          minimum: 0
+        description: >-
+          Game-action calls labeled confirmed that the plugin dropped because its buffer was full, session cumulative
+          count; calls the plugin skips by name, sub-type or preview are counted in the game_actions_skipped_ fields
+          instead; absent in events from plugins before 0.7.0.
+      - name: action_query_ms_total
+        logicalType: number
+        physicalType: DOUBLE
+        required: false
+        logicalTypeOptions:
+          minimum: 0
+        description: >-
+          Time inside the action.query hook, in milliseconds of wall-clock time over the same period as work_ms_total;
+          absent in events from plugins before 0.7.0.
+      - name: action_execute_ms_total
+        logicalType: number
+        physicalType: DOUBLE
+        required: false
+        logicalTypeOptions:
+          minimum: 0
+        description: >-
+          Time inside the action.execute hook, in milliseconds of wall-clock time over the same period as
+          work_ms_total; absent in events from plugins before 0.7.0.
+      - name: game_actions_skipped_preview_total
+        logicalType: integer
+        physicalType: BIGINT
+        required: false
+        logicalTypeOptions:
+          minimum: 0
+        description: >-
+          Game-action calls labeled preview that the plugin skipped (a name or sub-type it does not send, or a preview),
+          session cumulative count; absent in events from plugins before 0.8.0.
+      - name: game_actions_skipped_prediction_total
+        logicalType: integer
+        physicalType: BIGINT
+        required: false
+        logicalTypeOptions:
+          minimum: 0
+        description: >-
+          Game-action calls labeled prediction that the plugin skipped (a name or sub-type it does not send),
+          session cumulative count; absent in events from plugins before 0.8.0.
+      - name: game_actions_skipped_confirmed_total
+        logicalType: integer
+        physicalType: BIGINT
+        required: false
+        logicalTypeOptions:
+          minimum: 0
+        description: >-
+          Game-action calls labeled confirmed that the plugin skipped (a name or sub-type it does not send),
+          session cumulative count; absent in events from plugins before 0.8.0.
+      - name: game_actions_skipped_unknown_total
+        logicalType: integer
+        physicalType: BIGINT
+        required: false
+        logicalTypeOptions:
+          minimum: 0
+        description: >-
+          Skipped game-action calls whose name is not among the 81 names the plugin knows, any label, session
+          cumulative count; a subset of the three skipped counts above; absent in events from plugins before 0.8.0.
+      - name: game_actions_skipped_cheat_total
+        logicalType: integer
+        physicalType: BIGINT
+        required: false
+        logicalTypeOptions:
+          minimum: 0
+        description: >-
+          Skipped game-action calls that count as cheats: plugin 0.8.0 counts calls named `cheatset`; plugins 0.9.0 onward count
+          calls named `cheatset` and `ridefreezerating`; any label, session cumulative count; a subset of
+          the three skipped counts above; no argument other than `flags` is read and none is kept; absent in events from plugins before 0.8.0.

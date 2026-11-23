@@ -1,0 +1,103 @@
+version: 2
+
+models:
+  - name: dim_date
+    description: >-
+      Answers which company calendar date, season day and month end a fact
+      belongs to. Grain: one row per company date across whole kept company
+      months. Key: company_date. No unit; clock: company date. On the
+      zero-row build the model is empty because the bounds are null and the
+      recursion's anchor is filtered out.
+    config:
+      contract:
+        enforced: true
+    meta:
+      expected_min_rows: 1
+    data_tests:
+      - rows_on_sample:
+          arguments:
+            expected: 122
+    columns:
+      - name: company_date
+        data_type: date
+        description: "Company calendar date; unit: date; clock: company date."
+        data_tests: [unique, not_null]
+      - name: company_year
+        data_type: integer
+        description: "Year on the company calendar; unit: year; clock: company date."
+      - name: company_month
+        data_type: integer
+        description: "Company calendar month, March to October; unit: month; clock: company date."
+      - name: month_name
+        data_type: varchar
+        description: "English name of the company calendar month; text; no unit; clock: company date."
+      - name: day_of_month
+        data_type: integer
+        description: "Day number within the company month; unit: day; clock: company date."
+      - name: day_of_season
+        data_type: integer
+        description: "Day number from March 1 of the company year; unit: day; clock: company date."
+      - name: is_month_end
+        data_type: boolean
+        description: "Whether the company date is the last date of its month; no unit; clock: company date."
+
+unit_tests:
+  - name: dim_date_u5_spans_kept_months_and_excludes_winter
+    description: >-
+      It proves the date dimension spans the first and last kept company
+      months, excludes an abandoned statement from its bounds, fills the
+      winter gap without winter dates, and includes the complete closed
+      company year.
+    model: dim_date
+    given:
+      - input: ref('int_park_days__kept')
+        format: sql
+        rows: |
+          select date '2003-04-10' as company_date
+          union all
+          select date '2003-06-30'
+          union all
+          select date '2003-04-10'
+          union all
+          select date '2004-03-05'
+      - input: ref('int_statements__labeled')
+        format: sql
+        rows: |
+          select date '2004-10-01' as statement_company_date, cast('kept' as varchar) as timeline_status, cast('mapped' as varchar) as mapping_status
+          union all
+          select date '2002-10-01', 'abandoned', 'mapped'
+    expect:
+      format: sql
+      rows: |
+        select
+            cast(company_date as date) as company_date,
+            cast(extract(year from company_date) as integer) as company_year,
+            cast(extract(month from company_date) as integer) as company_month,
+            cast(
+                case extract(month from company_date)
+                    when 3 then 'March'
+                    when 4 then 'April'
+                    when 5 then 'May'
+                    when 6 then 'June'
+                    when 7 then 'July'
+                    when 8 then 'August'
+                    when 9 then 'September'
+                    when 10 then 'October'
+                end as varchar
+            ) as month_name,
+            cast(extract(day from company_date) as integer) as day_of_month,
+            cast(
+                date_diff(
+                    'day',
+                    make_date(extract(year from company_date)::integer, 3, 1),
+                    company_date
+                ) + 1 as integer
+            ) as day_of_season,
+            cast(company_date = last_day(company_date) as boolean)
+                as is_month_end
+        from range(
+            date '2003-04-01',
+            date '2004-11-01',
+            interval '1 day'
+        ) as dates(company_date)
+        where extract(month from company_date) between 3 and 10

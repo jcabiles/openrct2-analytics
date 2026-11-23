@@ -1,0 +1,583 @@
+version: 2
+
+models:
+  - name: dim_park
+    description: >-
+      Answers which parks are registered, their latest kept session labels,
+      and the span of their kept company dates. Grain: one row per registered
+      park. Key: park_id. Session labels use Type 1 replacement, so the latest
+      kept start overwrites an earlier name. The model has no unit of its own
+      (each column states its unit; the park number has unit: none); clock:
+      company date for the first and last kept park-day, wall clock for the
+      latest kept session start, and for the park number the company start
+      year order with the earliest session start (wall clock) as tie-break.
+      The park number counts every non-Sandbox registered park of the
+      warehouse, whatever its data set. On the zero-row build the model keeps
+      one row per registered park, with names and dates null, because the
+      registry source still reads the sample's registry.
+    config:
+      contract:
+        enforced: true
+    meta:
+      expected_min_rows: 1
+    data_tests:
+      - rows_on_sample:
+          arguments:
+            expected: 1
+    columns:
+      - name: park_id
+        data_type: varchar
+        description: "Stable registered park identifier; text; no unit; no clock."
+        data_tests:
+          - unique
+          - not_null
+      - name: park_name
+        data_type: varchar
+        description: "Name from the latest kept session start; text; no unit; clock: wall clock."
+      - name: scenario_name
+        data_type: varchar
+        description: "Scenario from the latest kept session start; text; no unit; clock: wall clock."
+      - name: climate
+        data_type: varchar
+        description: "Climate from the latest kept session start; text; no unit; clock: wall clock."
+      - name: data_set
+        data_type: varchar
+        description: "Data set assigned by the current park registry; text; no unit; no clock."
+      - name: company_start_year
+        data_type: integer
+        description: "Registered first company year; unit: year; clock: company date."
+      - name: game_year_origin
+        data_type: integer
+        description: "Registered game year origin; unit: game year; clock: game calendar."
+      - name: park_number
+        data_type: integer
+        description: >-
+          The 1-based place of a non-Sandbox park among the registered
+          parks, ordered by company start year, then by the earliest session
+          start of any of its sessions (nulls last), then by park ID; null for
+          a Sandbox park, which is not counted; unit: none (a place number,
+          not a measure); clock: company start year order, ties broken by the
+          earliest session start (wall clock).
+        data_tests:
+          - unique
+      - name: first_company_date
+        data_type: date
+        description: "First kept park-day date; no unit; clock: company date."
+      - name: last_company_date
+        data_type: date
+        description: "Last kept park-day date; no unit; clock: company date."
+
+unit_tests:
+  - name: dim_park_uses_latest_kept_name_and_keeps_registered_parks_without_events
+    description: >-
+      It proves that the newest kept session start supplies the park labels,
+      an off-path start is ignored, kept park-days set the date bounds, and a
+      registered park without events remains with null labels and dates.
+    model: dim_park
+    given:
+      - input: ref('int_park_registry__current')
+        format: sql
+        rows: |
+          select
+            cast('park1' as varchar) as park_id,
+            cast(2000 as integer) as company_start_year,
+            cast(9 as integer) as game_year_origin,
+            cast('rehearsal' as varchar) as data_set,
+            cast(null as varchar) as note
+          union all
+          select
+            cast('park2' as varchar),
+            cast(2003 as integer),
+            cast(5 as integer),
+            cast('company' as varchar),
+            cast(null as varchar)
+      - input: ref('stg_session_start')
+        format: sql
+        rows: |
+          select
+            cast('park1' as varchar) as park_id,
+            cast('sA' as varchar) as session_id,
+            cast(1 as integer) as seq,
+            cast('2026-10-02 00:00:00' as timestamp) as emitted_at,
+            cast('Alpha' as varchar) as park_name,
+            cast('Scenario A' as varchar) as scenario_name,
+            cast('temperate' as varchar) as climate
+          union all
+          select
+            cast('park1' as varchar),
+            cast('sB' as varchar),
+            cast(1 as integer),
+            cast('2026-10-02 00:00:00' as timestamp),
+            cast('Beta' as varchar),
+            cast('Scenario B' as varchar),
+            cast('arctic' as varchar)
+          union all
+          select
+            cast('park1' as varchar),
+            cast('sX' as varchar),
+            cast(1 as integer),
+            cast('2026-10-03 00:00:00' as timestamp),
+            cast('Abandoned' as varchar),
+            cast('Scenario X' as varchar),
+            cast('desert' as varchar)
+      - input: ref('int_sessions__lineage')
+        format: sql
+        rows: |
+          select
+            cast('sA' as varchar) as session_id,
+            true as is_on_kept_path,
+            cast(10 as integer) as cut_seq
+          union all
+          select cast('sB' as varchar), true, cast(10 as integer)
+          union all
+          select cast('sX' as varchar), false, cast(10 as integer)
+      - input: ref('int_park_days__kept')
+        format: sql
+        rows: |
+          select
+            cast('park1' as varchar) as park_id,
+            cast('2000-03-07' as date) as company_date
+          union all
+          select
+            cast('park1' as varchar),
+            cast('2000-06-21' as date)
+    expect:
+      rows:
+        - {park_id: park1, park_name: Beta, scenario_name: 'Scenario B', climate: arctic, data_set: rehearsal, company_start_year: 2000, game_year_origin: 9, park_number: 1, first_company_date: '2000-03-07', last_company_date: '2000-06-21'}
+        - {park_id: park2, park_name: null, scenario_name: null, climate: null, data_set: company, company_start_year: 2003, game_year_origin: 5, park_number: 2, first_company_date: null, last_company_date: null}
+
+  - name: dim_park_numbers_parks_by_company_start_year
+    description: >-
+      It proves that park numbers follow company start year, not park ID order and not first park-day order, and that a park counts whatever its data set.
+    model: dim_park
+    given:
+      - input: ref('int_park_registry__current')
+        format: sql
+        rows: |
+            select
+              cast('pa' as varchar) as park_id,
+              cast(2003 as integer) as company_start_year,
+              cast(1 as integer) as game_year_origin,
+              cast('company' as varchar) as data_set,
+              cast(null as varchar) as note
+            union all
+            select
+              cast('pb' as varchar),
+              cast(2000 as integer),
+              cast(1 as integer),
+              cast('rehearsal' as varchar),
+              cast(null as varchar)
+            union all
+            select
+              cast('pc' as varchar),
+              cast(2001 as integer),
+              cast(1 as integer),
+              cast('company' as varchar),
+              cast(null as varchar)
+            union all
+            select
+              cast('pd' as varchar),
+              cast(2002 as integer),
+              cast(1 as integer),
+              cast('rehearsal' as varchar),
+              cast(null as varchar)
+      - input: ref('stg_session_start')
+        format: sql
+        rows: |
+            select
+              cast('x' as varchar) as park_id,
+              cast('x' as varchar) as session_id,
+              cast(1 as integer) as seq,
+              cast('2026-01-01 00:00:00' as timestamp) as emitted_at,
+              cast('x' as varchar) as park_name,
+              cast('x' as varchar) as scenario_name,
+              cast('x' as varchar) as climate
+            where false
+      - input: ref('int_sessions__lineage')
+        format: sql
+        rows: |
+            select
+              cast('x' as varchar) as session_id,
+              true as is_on_kept_path,
+              cast(10 as integer) as cut_seq
+            where false
+      - input: ref('int_park_days__kept')
+        format: sql
+        rows: |
+            select
+              cast('pc' as varchar) as park_id,
+              cast('2000-02-01' as date) as company_date
+            union all
+            select cast('pa' as varchar), cast('2000-03-01' as date)
+            union all
+            select cast('pd' as varchar), cast('2000-04-01' as date)
+            union all
+            select cast('pb' as varchar), cast('2000-05-01' as date)
+    expect:
+      rows:
+        - {park_id: pa, park_number: 4}
+        - {park_id: pb, park_number: 1}
+        - {park_id: pc, park_number: 2}
+        - {park_id: pd, park_number: 3}
+
+  - name: dim_park_breaks_a_start_year_tie_by_earlier_first_session
+    description: >-
+      It proves that two parks with one start year are ordered by their earliest session start, where park ID order alone would give the other order.
+    model: dim_park
+    given:
+      - input: ref('int_park_registry__current')
+        format: sql
+        rows: |
+            select
+              cast('pa' as varchar) as park_id,
+              cast(2000 as integer) as company_start_year,
+              cast(1 as integer) as game_year_origin,
+              cast('company' as varchar) as data_set,
+              cast(null as varchar) as note
+            union all
+            select
+              cast('pb' as varchar),
+              cast(2000 as integer),
+              cast(1 as integer),
+              cast('company' as varchar),
+              cast(null as varchar)
+      - input: ref('stg_session_start')
+        format: sql
+        rows: |
+            select
+              cast('pa' as varchar) as park_id,
+              cast('sA1' as varchar) as session_id,
+              cast(1 as integer) as seq,
+              cast('2026-10-05 00:00:00' as timestamp) as emitted_at,
+              cast('N' as varchar) as park_name,
+              cast('S' as varchar) as scenario_name,
+              cast('c' as varchar) as climate
+            union all
+            select
+              cast('pb' as varchar),
+              cast('sB1' as varchar),
+              cast(1 as integer),
+              cast('2026-10-01 00:00:00' as timestamp),
+              cast('N' as varchar),
+              cast('S' as varchar),
+              cast('c' as varchar)
+            union all
+            select
+              cast('pb' as varchar),
+              cast('sB2' as varchar),
+              cast(1 as integer),
+              cast('2026-10-09 00:00:00' as timestamp),
+              cast('N' as varchar),
+              cast('S' as varchar),
+              cast('c' as varchar)
+      - input: ref('int_sessions__lineage')
+        format: sql
+        rows: |
+            select
+              cast('sA1' as varchar) as session_id,
+              true as is_on_kept_path,
+              cast(10 as integer) as cut_seq
+            union all
+            select cast('sB1' as varchar), true, cast(10 as integer)
+            union all
+            select cast('sB2' as varchar), true, cast(10 as integer)
+      - input: ref('int_park_days__kept')
+        format: sql
+        rows: |
+            select
+              cast('x' as varchar) as park_id,
+              cast('2000-01-01' as date) as company_date
+            where false
+    expect:
+      rows:
+        - {park_id: pa, park_number: 2}
+        - {park_id: pb, park_number: 1}
+
+  - name: dim_park_counts_an_off_path_session_as_a_first_session
+    description: >-
+      It proves that the earliest session start of a park includes a session off the kept path.
+    model: dim_park
+    given:
+      - input: ref('int_park_registry__current')
+        format: sql
+        rows: |
+            select
+              cast('pa' as varchar) as park_id,
+              cast(2000 as integer) as company_start_year,
+              cast(1 as integer) as game_year_origin,
+              cast('company' as varchar) as data_set,
+              cast(null as varchar) as note
+            union all
+            select
+              cast('pb' as varchar),
+              cast(2000 as integer),
+              cast(1 as integer),
+              cast('company' as varchar),
+              cast(null as varchar)
+      - input: ref('stg_session_start')
+        format: sql
+        rows: |
+            select
+              cast('pa' as varchar) as park_id,
+              cast('sA1' as varchar) as session_id,
+              cast(1 as integer) as seq,
+              cast('2026-09-01 00:00:00' as timestamp) as emitted_at,
+              cast('N' as varchar) as park_name,
+              cast('S' as varchar) as scenario_name,
+              cast('c' as varchar) as climate
+            union all
+            select
+              cast('pa' as varchar),
+              cast('sA2' as varchar),
+              cast(1 as integer),
+              cast('2026-10-05 00:00:00' as timestamp),
+              cast('N' as varchar),
+              cast('S' as varchar),
+              cast('c' as varchar)
+            union all
+            select
+              cast('pb' as varchar),
+              cast('sB1' as varchar),
+              cast(1 as integer),
+              cast('2026-10-01 00:00:00' as timestamp),
+              cast('N' as varchar),
+              cast('S' as varchar),
+              cast('c' as varchar)
+      - input: ref('int_sessions__lineage')
+        format: sql
+        rows: |
+            select
+              cast('sA1' as varchar) as session_id,
+              false as is_on_kept_path,
+              cast(10 as integer) as cut_seq
+            union all
+            select cast('sA2' as varchar), true, cast(10 as integer)
+            union all
+            select cast('sB1' as varchar), true, cast(10 as integer)
+      - input: ref('int_park_days__kept')
+        format: sql
+        rows: |
+            select
+              cast('x' as varchar) as park_id,
+              cast('2000-01-01' as date) as company_date
+            where false
+    expect:
+      rows:
+        - {park_id: pa, park_number: 1}
+        - {park_id: pb, park_number: 2}
+
+  - name: dim_park_breaks_equal_first_sessions_by_park_id
+    description: >-
+      It proves that two parks with one start year and one first session start are ordered by park ID.
+    model: dim_park
+    given:
+      - input: ref('int_park_registry__current')
+        format: sql
+        rows: |
+            select
+              cast('pb' as varchar) as park_id,
+              cast(2000 as integer) as company_start_year,
+              cast(1 as integer) as game_year_origin,
+              cast('company' as varchar) as data_set,
+              cast(null as varchar) as note
+            union all
+            select
+              cast('pa' as varchar),
+              cast(2000 as integer),
+              cast(1 as integer),
+              cast('company' as varchar),
+              cast(null as varchar)
+      - input: ref('stg_session_start')
+        format: sql
+        rows: |
+            select
+              cast('pa' as varchar) as park_id,
+              cast('sA1' as varchar) as session_id,
+              cast(1 as integer) as seq,
+              cast('2026-10-01 00:00:00' as timestamp) as emitted_at,
+              cast('N' as varchar) as park_name,
+              cast('S' as varchar) as scenario_name,
+              cast('c' as varchar) as climate
+            union all
+            select
+              cast('pb' as varchar),
+              cast('sB1' as varchar),
+              cast(1 as integer),
+              cast('2026-10-01 00:00:00' as timestamp),
+              cast('N' as varchar),
+              cast('S' as varchar),
+              cast('c' as varchar)
+      - input: ref('int_sessions__lineage')
+        format: sql
+        rows: |
+            select
+              cast('sA1' as varchar) as session_id,
+              true as is_on_kept_path,
+              cast(10 as integer) as cut_seq
+            union all
+            select cast('sB1' as varchar), true, cast(10 as integer)
+      - input: ref('int_park_days__kept')
+        format: sql
+        rows: |
+            select
+              cast('x' as varchar) as park_id,
+              cast('2000-01-01' as date) as company_date
+            where false
+    expect:
+      rows:
+        - {park_id: pa, park_number: 1}
+        - {park_id: pb, park_number: 2}
+
+  - name: dim_park_sorts_a_tied_park_without_a_session_start_last
+    description: >-
+      It proves that a park with no session start sorts after a tied park that has one, although its park ID is lower.
+    model: dim_park
+    given:
+      - input: ref('int_park_registry__current')
+        format: sql
+        rows: |
+            select
+              cast('pa' as varchar) as park_id,
+              cast(2000 as integer) as company_start_year,
+              cast(1 as integer) as game_year_origin,
+              cast('company' as varchar) as data_set,
+              cast(null as varchar) as note
+            union all
+            select
+              cast('pb' as varchar),
+              cast(2000 as integer),
+              cast(1 as integer),
+              cast('company' as varchar),
+              cast(null as varchar)
+      - input: ref('stg_session_start')
+        format: sql
+        rows: |
+            select
+              cast('pb' as varchar) as park_id,
+              cast('sB1' as varchar) as session_id,
+              cast(1 as integer) as seq,
+              cast('2026-10-01 00:00:00' as timestamp) as emitted_at,
+              cast('N' as varchar) as park_name,
+              cast('S' as varchar) as scenario_name,
+              cast('c' as varchar) as climate
+      - input: ref('int_sessions__lineage')
+        format: sql
+        rows: |
+            select
+              cast('sB1' as varchar) as session_id,
+              true as is_on_kept_path,
+              cast(10 as integer) as cut_seq
+      - input: ref('int_park_days__kept')
+        format: sql
+        rows: |
+            select
+              cast('x' as varchar) as park_id,
+              cast('2000-01-01' as date) as company_date
+            where false
+    expect:
+      rows:
+        - {park_id: pa, park_number: 2}
+        - {park_id: pb, park_number: 1}
+
+  - name: dim_park_numbers_a_park_with_no_park_day
+    description: >-
+      It proves that a registered park with no park-day, no session start and no monthly statement still has its number, and that parks after it keep theirs.
+    model: dim_park
+    given:
+      - input: ref('int_park_registry__current')
+        format: sql
+        rows: |
+            select
+              cast('pa' as varchar) as park_id,
+              cast(2000 as integer) as company_start_year,
+              cast(1 as integer) as game_year_origin,
+              cast('company' as varchar) as data_set,
+              cast(null as varchar) as note
+            union all
+            select
+              cast('pb' as varchar),
+              cast(2001 as integer),
+              cast(1 as integer),
+              cast('company' as varchar),
+              cast(null as varchar)
+      - input: ref('stg_session_start')
+        format: sql
+        rows: |
+            select
+              cast('pb' as varchar) as park_id,
+              cast('sB1' as varchar) as session_id,
+              cast(1 as integer) as seq,
+              cast('2026-10-01 00:00:00' as timestamp) as emitted_at,
+              cast('N' as varchar) as park_name,
+              cast('S' as varchar) as scenario_name,
+              cast('c' as varchar) as climate
+      - input: ref('int_sessions__lineage')
+        format: sql
+        rows: |
+            select
+              cast('sB1' as varchar) as session_id,
+              true as is_on_kept_path,
+              cast(10 as integer) as cut_seq
+      - input: ref('int_park_days__kept')
+        format: sql
+        rows: |
+            select
+              cast('pb' as varchar) as park_id,
+              cast('2001-03-07' as date) as company_date
+    expect:
+      rows:
+        - {park_id: pa, park_number: 1}
+        - {park_id: pb, park_number: 2}
+
+  - name: dim_park_gives_a_sandbox_park_no_number_and_does_not_count_it
+    description: >-
+      It proves that a Sandbox park (registry note equal to the practice note) has a null number and is not counted, so the company park after it is Park 1.
+    model: dim_park
+    given:
+      - input: ref('int_park_registry__current')
+        format: sql
+        rows: |
+            select
+              cast('ps' as varchar) as park_id,
+              cast(2000 as integer) as company_start_year,
+              cast(1 as integer) as game_year_origin,
+              cast('company' as varchar) as data_set,
+              cast('Throwaway practice park; not company data.' as varchar) as note
+            union all
+            select
+              cast('pa' as varchar),
+              cast(2001 as integer),
+              cast(1 as integer),
+              cast('company' as varchar),
+              cast(null as varchar)
+      - input: ref('stg_session_start')
+        format: sql
+        rows: |
+            select
+              cast('x' as varchar) as park_id,
+              cast('x' as varchar) as session_id,
+              cast(1 as integer) as seq,
+              cast('2026-01-01 00:00:00' as timestamp) as emitted_at,
+              cast('x' as varchar) as park_name,
+              cast('x' as varchar) as scenario_name,
+              cast('x' as varchar) as climate
+            where false
+      - input: ref('int_sessions__lineage')
+        format: sql
+        rows: |
+            select
+              cast('x' as varchar) as session_id,
+              true as is_on_kept_path,
+              cast(10 as integer) as cut_seq
+            where false
+      - input: ref('int_park_days__kept')
+        format: sql
+        rows: |
+            select
+              cast('x' as varchar) as park_id,
+              cast('2000-01-01' as date) as company_date
+            where false
+    expect:
+      rows:
+        - {park_id: ps, park_number: null}
+        - {park_id: pa, park_number: 1}

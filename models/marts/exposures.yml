@@ -1,0 +1,104 @@
+version: 2
+
+exposures:
+  - name: executive_reporting
+    label: Executive reporting
+    type: dashboard
+    maturity: low
+    owner:
+      name: the project owner
+    description: >-
+      Planned page group "Executive reporting" (roadmap line 19 of
+      docs/ai-dlc/roadmap/park-company.md): year-over-year visitors, revenue,
+      profit and operating costs per park and for the company, and a monthly
+      P&L that reconciles to the game's ledger. Reads the two month summary
+      tables.
+    config:
+      meta:
+        status: planned
+    depends_on:
+      - ref('obt_park_month')
+      - ref('obt_company_month')
+
+  - name: ride_profitability
+    label: Ride profitability
+    type: dashboard
+    maturity: low
+    owner:
+      name: the project owner
+    description: >-
+      Planned page group "Ride profitability" (roadmap line 20 of
+      docs/ai-dlc/roadmap/park-company.md): profit by ride type and ride
+      statistics, popularity against ratings, and an observational pricing
+      model. Declared on the built ride facts and dimension until a ride-day
+      summary table exists.
+    config:
+      meta:
+        status: planned
+    depends_on:
+      - ref('fct_ride_day')
+      - ref('dim_ride')
+
+  - name: stall_profitability
+    label: Stall profitability
+    type: dashboard
+    maturity: low
+    owner:
+      name: the project owner
+    description: >-
+      Planned page group "Stall profitability" (roadmap line 21 of
+      docs/ai-dlc/roadmap/park-company.md): purchases per single-item stall (not unique customers)
+      and what drives stall profit, including weather and umbrella sales.
+      Declared on the built ride facts and dimensions until a ride-day summary
+      table exists.
+    config:
+      meta:
+        status: planned
+    depends_on:
+      - ref('fct_ride_day')
+      - ref('dim_ride')
+      - ref('dim_item')
+
+  - name: operating_profit_page
+    label: Operating profit page
+    type: dashboard
+    maturity: low
+    owner:
+      name: the project owner
+    description: >-
+      The built showcase page of monthly operating profit per park, every
+      park-year with its close status, and closed company years, served from
+      the allowlist in site/exports.toml
+      (roadmap line 19 of docs/ai-dlc/roadmap/park-company.md, first slice of
+      Executive reporting).
+    config:
+      meta:
+        status: built
+    depends_on:
+      - ref('fct_park_month')
+      - ref('obt_park_year')
+      - ref('obt_company_year')
+      - ref('dim_park')
+
+  - name: department_panels
+    label: Department panels
+    type: dashboard
+    maturity: low
+    owner:
+      name: the project owner
+    description: >-
+      The figures for the Finance, Operations and Attractions department
+      panels of the showcase page: availability, longest queue and riders per
+      ride by company month, riders against guest rating and ride age per ride
+      by company year, and the park-month revenue lines and revenue-mix shares
+      (the revenue mix belongs to Finance). The files are served from the
+      allowlist in site/exports.toml and read by the six served panels, which show
+      live figures.
+    config:
+      meta:
+        status: built
+    depends_on:
+      - ref('obt_ride_month')
+      - ref('obt_ride_year')
+      - ref('obt_park_month')
+      - ref('dim_park')

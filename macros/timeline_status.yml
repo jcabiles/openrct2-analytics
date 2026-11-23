@@ -1,0 +1,20 @@
+version: 2
+
+macros:
+  - name: timeline_status
+    description: >
+      Labels an event `kept` or `abandoned` from its session's lineage row.
+      Kept only when the session is on the kept path, has a cut and
+      `seq < cut_seq`; a missing lineage row gives `abandoned`. The caller
+      left-joins `int_sessions__lineage` on `session_id`. No unit; no clock.
+    arguments:
+      - name: seq
+        type: string
+        description: >
+          The event's `seq` expression as text, for example
+          `stg_finance_month.seq`.
+      - name: lineage
+        type: string
+        description: >
+          The alias of the joined `int_sessions__lineage`, as text, for
+          example `lineage`.

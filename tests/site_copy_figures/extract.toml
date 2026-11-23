@@ -1,0 +1,39 @@
+# Numbers the game-extraction section (#extract) shows as plain copy, outside any figure region
+# ("Numbers kept as copy" in docs/ai-dlc/specs/site-mockup-port.md). Each `shown` text must appear
+# in every build; each `phrases` entry must be found, as a fixed string, in `source`.
+# Within one `shown` list, a longer text comes before any text it contains ("1.25 ms" before "25 ms").
+
+[[kept]]
+id = "K4"
+where = "tick budget line and gauge limits"
+shown = ["1.25 ms", "25 ms", "40 ticks a second", "10 ms"]
+source = "docs/adr/0005-plugin-per-tick-budget.md"
+phrases = ["25 ms tick slot", "40 ticks per second", "1.25 ms per tick"]
+
+[[kept]]
+id = "K5"
+where = "tick gauges"
+shown = ["5.260 ms", "0.1491 ms"]
+source = "docs/FINDINGS.md"
+phrases = ["worst tick 5.260 ms and highest mean 0.1491 ms"]
+
+[[kept]]
+id = "K6"
+where = "benchmark line"
+shown = ["three 35-day runs", "1,938 guests", "13 October 2026"]
+source = "docs/FINDINGS.md"
+phrases = ["3 runs of 35 judged game days", "1,938-guest benchmark park"]
+
+[[kept]]
+id = "K7"
+where = "first design benchmark"
+shown = ["28 September 2026", "three 35-day runs", "OpenRCT2 0.5.5", "95.6 ms"]
+source = "docs/FINDINGS.md"
+phrases = ["**95.6 ms**", "3 valid runs of 35 game days"]
+
+[[kept]]
+id = "K8"
+where = "game version in the lead"
+shown = ["OpenRCT2 0.5.6"]
+source = "AGENTS.md"
+phrases = ["OpenRCT2 0.5.6"]

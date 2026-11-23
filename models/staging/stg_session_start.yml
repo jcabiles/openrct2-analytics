@@ -1,0 +1,97 @@
+version: 2
+
+models:
+  - name: stg_session_start
+    description: >-
+      Answers which park and which save each play session started from (park name, climate, and the save it loaded),
+      so every later reading can be tied to one session. It feeds the session dimension that park identity and save
+      lineage build on, and the park labels the profit-and-loss statement shows. Grain: one row per session_start
+      event, at most one per session; a session from plugin 0.1.0, or one whose session_start the queue dropped
+      before the first hand-off (counted in `lines_dropped_total`), has none. Key: event_id, and session_id, unique
+      after the dedupe that keeps the earliest delivery by received_at, _raw_file, and _raw_line. Payload and raw
+      delivery coordinates pass through unchanged; the model has no unit and no clock of its own.
+    meta:
+      contract_version: 1.8.0
+      expected_min_rows: 1
+    data_tests:
+      - repeat_delivery_payload_differs:
+          arguments:
+            source_relation: source('landing', 'session_start')
+    columns:
+      - name: schema_version
+        description: "Major contract version; unit: count; no clock."
+        data_tests: [not_null]
+      - name: event_type
+        description: "Event kind; unit: text; no clock."
+        data_tests: [not_null]
+      - name: plugin_version
+        description: "Plugin build version; unit: version; no clock."
+        data_tests: [not_null]
+      - name: park_id
+        description: "Stable park identifier; unit: text; no clock."
+        data_tests: [not_null]
+      - name: session_id
+        description: "Plugin start identifier; unit: text; no clock."
+        data_tests: [not_null, unique]
+      - name: seq
+        description: "Order within the session from 1; unit: count; clock: session order."
+        data_tests: [not_null]
+      - name: event_id
+        description: "session_id-seq event key; unit: text; no clock."
+        data_tests: [not_null, unique]
+      - name: game_year
+        description: "In-game year; unit: year; clock: game calendar."
+        data_tests: [not_null]
+      - name: game_month
+        description: "In-game month, 0 to 7; unit: month; clock: game calendar."
+        data_tests: [not_null]
+      - name: game_day
+        description: "In-game day of month; unit: day; clock: game calendar."
+        data_tests: [not_null]
+      - name: game_ticks_elapsed
+        description: "Game ticks since park start; unit: game tick; clock: game."
+        data_tests: [not_null]
+      - name: emitted_at
+        description: "Producer send time; unit: timestamp UTC; clock: wall clock."
+        data_tests: [not_null]
+      - name: received_at
+        description: "Listener landing time; unit: timestamp UTC; clock: wall clock."
+        data_tests: [not_null]
+      - name: _raw_file
+        description: "Base name of the raw JSON Lines file; unit: text; no clock."
+        data_tests: [not_null]
+      - name: _raw_line
+        description: "1-based physical line number, including blank lines; unit: line number; no clock."
+        data_tests: [not_null]
+      - name: api_version
+        description: "Game plugin API level at plugin start, from 1; it stands in for the game version, which the 0.5.5 plugin API does not expose; unit: version; no clock."
+        data_tests: [not_null]
+      - name: park_name
+        description: "Park name read at plugin start; unit: text; no clock; not unique, so never an identity."
+        data_tests: [not_null]
+      - name: scenario_name
+        description: "Scenario name read at plugin start; unit: text; no clock."
+        data_tests: [not_null]
+      - name: headless
+        description: "Whether the game has no window at plugin start; unit: boolean; no clock."
+        data_tests: [not_null]
+      - name: game_speed
+        description: "Engine speed step at plugin start; unit: speed step; no clock."
+        data_tests: [not_null]
+      - name: climate
+        description: "Climate as the game names it (coolAndWet, warm, hotAndDry or cold expected), read at plugin start; unit: text; no clock; null for plugin versions before 0.3.0."
+      - name: loaded_save_id
+        description: "The save_id stored in the park this session loaded, read at plugin start; unit: text; no clock; null when the park was never saved by plugin 0.3.0 or later."
+      - name: loaded_save_session_id
+        description: "Session that wrote the loaded save; unit: text; no clock; null under the same rule as loaded_save_id."
+      - name: loaded_save_seq_floor
+        description: "Last seq the writing session had handed off when the loaded save was made, 0 if none; unit: count; clock: writing-session order; null when absent or not a whole number from 0 to 2^53 - 1."
+      - name: loaded_save_lines_waiting
+        description: "Lines the writing session had queued and not yet handed off when the loaded save was made; a lost save_written would have taken seq loaded_save_seq_floor + loaded_save_lines_waiting + 1; unit: count; clock: writing-session order; null when absent or not a whole number from 0 to 2,147,483,647."
+      - name: play_mode
+        description: "Who played the session, managed (the project owner) or autopilot (the autopilot helper), from the play-mode label feed; managed when the feed has no row for the session; unit: text; no clock."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [managed, autopilot]

@@ -1,0 +1,35 @@
+name: "openrct2_analytics"
+version: "1.0.0"
+profile: "openrct2_analytics"
+
+model-paths: ["models"]
+test-paths: ["tests/dbt"]
+
+clean-targets: ["target", "dbt_packages"]
+
+models:
+  openrct2_analytics:
+    +materialized: table
+    staging:
+      +schema: staging
+    intermediate:
+      +schema: intermediate
+    marts:
+      +schema: marts
+
+vars:
+  # Player values that mark a game action as issued by the plugin itself (int_game_actions__labeled).
+  # 0 was measured on the headless benchmark host (2026-10-22 dry run). It is most likely that host's network player
+  # number, so a human hosting a multiplayer server would carry 0 and be dropped. The real-play check is to confirm
+  # the human value (-1).
+  plugin_issued_player_values: [0]
+
+data_tests:
+  +severity: error
+
+flags:
+  # No outbound calls from the gate: `dbt parse`/`dbt build` otherwise phone
+  # home to dbt Labs on every `make check` run.
+  send_anonymous_usage_stats: false
+  # dbt parse only warns (it does not fail) when a macro's YAML (macros/*.yml) disagrees with its signature; the gate does not catch that drift.
+  validate_macro_args: true

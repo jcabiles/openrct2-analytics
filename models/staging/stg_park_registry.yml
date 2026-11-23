@@ -1,0 +1,35 @@
+version: 2
+
+models:
+  - name: stg_park_registry
+    description: >-
+      Answers which company calendar year each park's first game year falls in, as the park registry feed last
+      stated it, so a game date can later be turned into a company date. Grain: one row per feed row; park_id with delivery_file is not guaranteed unique. A later delivery restates a
+      park and does not replace the earlier row, so a park can appear in many rows, and which delivery is current
+      is judged in the models downstream. Renames and casts only: `filename` becomes `delivery_file`, the two year columns
+      become integers and `delivered_on` becomes a date. The model has no unit and no clock of its own.
+    meta:
+      contract_version: 1.0.0
+      expected_min_rows: 1
+      park_registry: staging
+    columns:
+      - name: park_id
+        description: "The park's identifier, the same text the plugin sends; no unit; no clock."
+        data_tests: [not_null]
+      - name: company_start_year
+        description: "Company calendar year of the park's first game year; unit: year; clock: company date. The feed check (registry_feed) is the gate on number shape and runs before every transform and publish."
+        data_tests: [not_null]
+      - name: game_year_origin
+        description: "Game year that counts as the park's first company year, at least 1; unit: game year; clock: game. The feed check (registry_feed) is the gate on number shape and runs before every transform and publish."
+        data_tests: [not_null]
+      - name: data_set
+        description: "Data set the row belongs to, rehearsal or company; text; no unit; no clock."
+        data_tests: [not_null]
+      - name: note
+        description: "Free text from the delivery, may be empty; no unit; no clock."
+      - name: delivered_on
+        description: "Calendar date of the delivery, no time; no unit; clock: wall-clock delivery date."
+        data_tests: [not_null]
+      - name: delivery_file
+        description: "Path of the delivery file as the folder was globbed, relative on dev and ci, absolute in a publish; text; no unit; no clock."
+        data_tests: [not_null]

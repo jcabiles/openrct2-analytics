@@ -1,0 +1,40 @@
+{%- from "figure.njk" import figure as region -%}
+{%- from "panel-table.njk" import panelTable -%}
+{%- set legendFig = "fin-legend" | figure(exports) -%}
+<div class="dnote">{{ region("note-fin" | figure(exports), "div", "p") }}</div>
+<div class="view-body">
+  <div class="panel">
+    {% include "finance-profit.njk" %}
+    <p class="cap">{% passage "the-analytics-strategy.md", "fin-profit-desc", "inline" %}</p>
+    {% call region(legendFig, "div") %}
+    <ul class="legend">
+      {%- for park in legendFig.rows %}
+      <li><span class="sw {{ legendFig.swatch(loop.index0) }}"></span>Park {{ park.park_number }}{% if not loop.last %}<i class="vh">,</i>{% endif %}</li>
+      {%- endfor %}
+    </ul>
+    {% endcall %}
+    <p class="cap" data-finance-empty hidden>{{ legendFig.pending }}</p>
+  </div>
+  {%- set panels = [
+    { id: "fin-visits", caps: ["fin-visits-desc"] },
+    { id: "fin-price", caps: ["fin-price-desc", "fin-price-cap"] },
+    { id: "fin-mix", caps: ["fin-mix-cap"] },
+    { id: "fin-growth", caps: [] },
+    { id: "fin-stalls", caps: ["fin-stalls-cap"] },
+    { id: "fin-statement", caps: [] }
+  ] %}
+  {%- for panel in panels %}
+  <div class="panel">
+    {%- set fig = panel.id | figure(exports) %}
+    {%- if fig.cells %}
+    {% call region(fig) %}{{ panelTable(fig) }}{% endcall %}
+    {%- else %}
+    {{ region(fig) }}
+    {%- endif %}
+    {%- for cap in panel.caps %}
+    <p class="cap">{% passage "the-analytics-strategy.md", cap, "inline" %}</p>
+    {%- endfor %}
+  </div>
+  {%- endfor %}
+</div>
+<p class="gapl">{% passage "the-analytics-strategy.md", "fin-gap", "inline" %}</p>

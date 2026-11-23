@@ -1,0 +1,847 @@
+version: 2
+
+models:
+  - name: stg_finance_month
+    description: >-
+      Answers what the park earned and spent in each closed game month, and what cash and loan it held when the
+      month closed, so monthly finance questions start from one clean row per statement. Grain: one row per
+      finance_month event, which is one per session per closed game month, read in the day-1 callback at the end of the
+      next month's first tick; each ledger column is that game month's total; a park and month can appear in two sessions,
+      which later intermediate models resolve. Key: event_id, unique after the dedupe that keeps the
+      first-received copy of a repeated delivery. Renames and casts only: money is converted from tenths of a
+      dollar to dollars here, once. Unit: none for the model as a whole; the unit and clock of each column are
+      in its description; clock: game calendar month (statement_year and statement_month).
+    meta:
+      contract_version: 1.8.0
+      expected_min_rows: 1
+    config:
+      contract:
+        enforced: true
+    data_tests:
+      - repeat_delivery_payload_differs:
+          arguments:
+            source_relation: source('landing', 'finance_month')
+    columns:
+      - name: schema_version
+        description: "Major version of the contract set; unit: count (always 1 here); no clock."
+        data_type: integer
+        data_tests:
+          - not_null
+      - name: event_type
+        description: "Event kind (finance_month here); text, no unit, no clock."
+        data_type: varchar
+        data_tests:
+          - not_null
+      - name: plugin_version
+        description: "Plugin build that sent the event; text version, no unit, no clock."
+        data_type: varchar
+        data_tests:
+          - not_null
+      - name: park_id
+        description: "Stable park identifier from park storage; text, no unit, no clock."
+        data_type: varchar
+        data_tests:
+          - not_null
+      - name: session_id
+        description: "Plugin start identifier, new on every start; text, no unit, no clock."
+        data_type: varchar
+        data_tests:
+          - not_null
+      - name: seq
+        description: "Order within the session across all event types, from 1; unit: count; no clock (session order, not a time)."
+        data_type: bigint
+        data_tests:
+          - not_null
+      - name: event_id
+        description: "session_id-seq; text, one per row after the dedupe; no unit, no clock."
+        data_type: varchar
+        data_tests:
+          - not_null
+          - unique
+      - name: game_year
+        description: "In-game year, from 1; unit: year; clock: game calendar."
+        data_type: integer
+        data_tests:
+          - not_null
+      - name: game_month
+        description: "In-game month, 0 to 7 (March = 0); unit: month; clock: game calendar."
+        data_type: integer
+        data_tests:
+          - not_null
+      - name: game_day
+        description: "In-game day of the month, from 1; unit: day; clock: game calendar."
+        data_type: integer
+        data_tests:
+          - not_null
+      - name: game_ticks_elapsed
+        description: "Game ticks since the park began, the tick at which the month closed; unit: game tick; clock: game."
+        data_type: bigint
+        data_tests:
+          - not_null
+      - name: emitted_at
+        description: "Producer time when the event was sent; unit: timestamp (UTC); clock: wall clock."
+        data_type: timestamp with time zone
+        data_tests:
+          - not_null
+      - name: received_at
+        description: "Listener time when the line landed, the first key of the dedupe order; unit: timestamp (UTC); clock: wall clock."
+        data_type: timestamp with time zone
+        data_tests:
+          - not_null
+      - name: _raw_file
+        description: "Base name of the raw JSON Lines file the delivery came from, never a path; text, no unit, no clock."
+        data_type: varchar
+        data_tests:
+          - not_null
+      - name: _raw_line
+        description: "1-based physical line number of the delivery in that raw file, blank lines counted; unit: line number; no clock."
+        data_type: bigint
+        data_tests:
+          - not_null
+      - name: statement_year
+        description: "In-game year of the closed month, from 1; unit: year; clock: game calendar."
+        data_type: integer
+        data_tests:
+          - not_null
+      - name: statement_month
+        description: "In-game month that closed, 0 to 7 (March = 0); unit: month; clock: game calendar."
+        data_type: integer
+        data_tests:
+          - not_null
+      - name: ride_construction_usd
+        description: "The closed game month's ride construction total in US dollars (decimal(18,2)); income positive and spending negative, and a refund can make a spending line positive; unit: US dollars; clock: game calendar month."
+        data_type: decimal(18,2)
+        data_tests:
+          - not_null
+      - name: ride_runningcosts_usd
+        description: "The closed game month's ride runningcosts total in US dollars (decimal(18,2)); income positive and spending negative, and a refund can make a spending line positive; unit: US dollars; clock: game calendar month."
+        data_type: decimal(18,2)
+        data_tests:
+          - not_null
+      - name: land_purchase_usd
+        description: "The closed game month's land purchase total in US dollars (decimal(18,2)); income positive and spending negative, and a refund can make a spending line positive; unit: US dollars; clock: game calendar month."
+        data_type: decimal(18,2)
+        data_tests:
+          - not_null
+      - name: landscaping_usd
+        description: "The closed game month's landscaping total in US dollars (decimal(18,2)); income positive and spending negative, and a refund can make a spending line positive; unit: US dollars; clock: game calendar month."
+        data_type: decimal(18,2)
+        data_tests:
+          - not_null
+      - name: park_entrance_tickets_usd
+        description: "The closed game month's park entrance tickets total in US dollars (decimal(18,2)); income positive and spending negative, and a refund can make a spending line positive; unit: US dollars; clock: game calendar month."
+        data_type: decimal(18,2)
+        data_tests:
+          - not_null
+      - name: park_ride_tickets_usd
+        description: "The closed game month's ride tickets total in US dollars (decimal(18,2)); income positive and spending negative, and a refund can make a spending line positive; unit: US dollars; clock: game calendar month."
+        data_type: decimal(18,2)
+        data_tests:
+          - not_null
+      - name: shop_sales_usd
+        description: "The closed game month's shop sales total in US dollars (decimal(18,2)); income positive and spending negative, and a refund can make a spending line positive; unit: US dollars; clock: game calendar month."
+        data_type: decimal(18,2)
+        data_tests:
+          - not_null
+      - name: shop_stock_usd
+        description: "The closed game month's shop stock total in US dollars (decimal(18,2)); income positive and spending negative, and a refund can make a spending line positive; unit: US dollars; clock: game calendar month."
+        data_type: decimal(18,2)
+        data_tests:
+          - not_null
+      - name: food_drink_sales_usd
+        description: "The closed game month's food drink sales total in US dollars (decimal(18,2)); income positive and spending negative, and a refund can make a spending line positive; unit: US dollars; clock: game calendar month."
+        data_type: decimal(18,2)
+        data_tests:
+          - not_null
+      - name: food_drink_stock_usd
+        description: "The closed game month's food drink stock total in US dollars (decimal(18,2)); income positive and spending negative, and a refund can make a spending line positive; unit: US dollars; clock: game calendar month."
+        data_type: decimal(18,2)
+        data_tests:
+          - not_null
+      - name: wages_usd
+        description: "The closed game month's staff wages total in US dollars (decimal(18,2)); income positive and spending negative, and a refund can make a spending line positive; unit: US dollars; clock: game calendar month."
+        data_type: decimal(18,2)
+        data_tests:
+          - not_null
+      - name: marketing_usd
+        description: "The closed game month's marketing total in US dollars (decimal(18,2)); income positive and spending negative, and a refund can make a spending line positive; unit: US dollars; clock: game calendar month."
+        data_type: decimal(18,2)
+        data_tests:
+          - not_null
+      - name: research_usd
+        description: "The closed game month's research total in US dollars (decimal(18,2)); income positive and spending negative, and a refund can make a spending line positive; unit: US dollars; clock: game calendar month."
+        data_type: decimal(18,2)
+        data_tests:
+          - not_null
+      - name: interest_usd
+        description: "The closed game month's loan interest total in US dollars (decimal(18,2)); income positive and spending negative, and a refund can make a spending line positive; unit: US dollars; clock: game calendar month."
+        data_type: decimal(18,2)
+        data_tests:
+          - not_null
+      - name: cash_usd
+        description: "Park cash in US dollars (decimal(18,2)), may be negative; a balance at the reading, the day-1 callback of the month after the statement month, which runs at the end of that month's first tick, so it can include the money already booked to the new month (new_month_booked_usd); unit: US dollars; clock: game calendar."
+        data_type: decimal(18,2)
+        data_tests:
+          - not_null
+      - name: bank_loan_usd
+        description: "Bank loan outstanding in US dollars (decimal(18,2)), never negative; a balance at the reading, the day-1 callback of the month after the statement month, which runs at the end of that month's first tick, so it can include the money already booked to the new month (new_month_booked_usd); unit: US dollars; clock: game calendar."
+        data_type: decimal(18,2)
+        data_tests:
+          - not_null
+      - name: new_month_booked_usd
+        description: "The money already booked to the new month when the statement was read, in US dollars (decimal(18,2)); the sum of index 0 of the 14 expenditure histories, signed like the ledger lines; null for statements from plugins before 0.6.0, which do not send it; unit: US dollars; clock: game calendar."
+        data_type: decimal(18,2)
+
+unit_tests:
+  - name: stg_finance_month_converts_every_money_column_to_usd
+    description: >-
+      Each of the 17 money columns converts from tenths of a dollar to dollars once, keeping two decimals, on
+      positive, negative, null and above-2^53 values. The optional new_month_booked column converts the same way:
+      one row gives it a positive value, one a negative value, and the rest leave it null. Sign: one row makes the 14 ledger lines and cash negative
+      (bank_loan stays non-negative in every row, since its contract minimum is 0), and another row makes wages a
+      positive refund. Precision: one row gives every one of the 16 columns its own odd value above 2^53, which no
+      double can hold. Null: one row has all 17 money columns null and another has three null, and each stays
+      null. Every row gives the 17 columns distinct values and the expectation lists all 17 _usd columns, so
+      swapping two money columns, or dropping the x0.1 on any one, fails. The year and month columns take distinct
+      values across a year wrap (game_year 4, game_month 0, statement_year 3, statement_month 7), so swapping a
+      year with a month or an envelope field with its statement field fails.
+    model: stg_finance_month
+    given:
+      - input: source('landing', 'finance_month')
+        format: sql
+        rows: |
+          select
+            cast(1 as integer) as schema_version, cast('finance_month' as varchar) as event_type, cast('0.1.0' as
+            varchar) as plugin_version, cast('kpark1' as varchar) as park_id, cast('s1' as varchar) as session_id,
+            cast(1 as bigint) as seq, cast('s1-1' as varchar) as event_id, cast(4 as integer) as game_year, cast(0 as
+            integer) as game_month, cast(1 as integer) as game_day, cast(1001 as bigint) as game_ticks_elapsed,
+            cast('2026-09-30 23:30:00+00' as timestamptz) as emitted_at, cast('2026-09-30 23:30:01+00' as
+            timestamptz) as received_at, cast('a.jsonl' as varchar) as _raw_file, cast(1 as bigint) as _raw_line,
+            cast(3 as integer) as statement_year, cast(7 as integer) as statement_month, cast(12345 as bigint) as
+            ride_construction_tenths, cast(2223 as bigint) as ride_runningcosts_tenths, cast(3335 as bigint) as
+            land_purchase_tenths, cast(4447 as bigint) as landscaping_tenths, cast(5559 as bigint) as
+            park_entrance_tickets_tenths, cast(6671 as bigint) as park_ride_tickets_tenths, cast(7783 as bigint) as
+            shop_sales_tenths, cast(8895 as bigint) as shop_stock_tenths, cast(10007 as bigint) as
+            food_drink_sales_tenths, cast(11119 as bigint) as food_drink_stock_tenths, cast(12231 as bigint) as
+            wages_tenths, cast(13343 as bigint) as marketing_tenths, cast(14455 as bigint) as research_tenths,
+            cast(15567 as bigint) as interest_tenths, cast(16679 as bigint) as cash_tenths, cast(17791 as bigint) as
+            bank_loan_tenths, cast(4321 as bigint) as new_month_booked_tenths
+          union all
+          select
+            cast(1 as integer), cast('finance_month' as varchar), cast('0.1.0' as varchar), cast('kpark1' as
+            varchar), cast('s1' as varchar), cast(2 as bigint), cast('s1-2' as varchar), cast(3 as integer), cast(3
+            as integer), cast(1 as integer), cast(1002 as bigint), cast('2026-09-30 23:30:00+00' as timestamptz),
+            cast('2026-09-30 23:30:01+00' as timestamptz), cast('a.jsonl' as varchar), cast(2 as bigint), cast(3 as
+            integer), cast(2 as integer), cast(-9876 as bigint), cast(-2223 as bigint), cast(-3335 as bigint),
+            cast(-4447 as bigint), cast(-5559 as bigint), cast(-6671 as bigint), cast(-7783 as bigint), cast(-8895 as
+            bigint), cast(-10007 as bigint), cast(-11119 as bigint), cast(-12231 as bigint), cast(-13343 as bigint),
+            cast(-14455 as bigint), cast(-15567 as bigint), cast(-16679 as bigint), cast(17791 as bigint), cast(-8765 as bigint)
+          union all
+          select
+            cast(1 as integer), cast('finance_month' as varchar), cast('0.1.0' as varchar), cast('kpark1' as
+            varchar), cast('s1' as varchar), cast(3 as bigint), cast('s1-3' as varchar), cast(5 as integer), cast(1
+            as integer), cast(1 as integer), cast(1003 as bigint), cast('2026-09-30 23:30:00+00' as timestamptz),
+            cast('2026-09-30 23:30:01+00' as timestamptz), cast('a.jsonl' as varchar), cast(3 as bigint), cast(5 as
+            integer), cast(0 as integer), cast(1111 as bigint), cast(2223 as bigint), cast(3335 as bigint), cast(4447
+            as bigint), cast(5559 as bigint), cast(6671 as bigint), cast(7783 as bigint), cast(8895 as bigint),
+            cast(10007 as bigint), cast(11119 as bigint), cast(5555 as bigint), cast(13343 as bigint), cast(14455 as
+            bigint), cast(15567 as bigint), cast(16679 as bigint), cast(17791 as bigint), cast(null as bigint)
+          union all
+          select
+            cast(1 as integer), cast('finance_month' as varchar), cast('0.1.0' as varchar), cast('kpark1' as
+            varchar), cast('s1' as varchar), cast(4 as bigint), cast('s1-4' as varchar), cast(6 as integer), cast(0
+            as integer), cast(1 as integer), cast(1004 as bigint), cast('2026-09-30 23:30:00+00' as timestamptz),
+            cast('2026-09-30 23:30:01+00' as timestamptz), cast('a.jsonl' as varchar), cast(4 as bigint), cast(5 as
+            integer), cast(7 as integer), cast(9007199254740993 as bigint), cast(9007199254740995 as bigint),
+            cast(9007199254740997 as bigint), cast(9007199254740999 as bigint), cast(9007199254741001 as bigint),
+            cast(9007199254741003 as bigint), cast(9007199254741005 as bigint), cast(9007199254741007 as bigint),
+            cast(9007199254741009 as bigint), cast(9007199254741011 as bigint), cast(9007199254741013 as bigint),
+            cast(9007199254741015 as bigint), cast(9007199254741017 as bigint), cast(9007199254741019 as bigint),
+            cast(9007199254741021 as bigint), cast(9007199254741023 as bigint), cast(null as bigint)
+          union all
+          select
+            cast(1 as integer), cast('finance_month' as varchar), cast('0.1.0' as varchar), cast('kpark1' as
+            varchar), cast('s1' as varchar), cast(5 as bigint), cast('s1-5' as varchar), cast(6 as integer), cast(1
+            as integer), cast(1 as integer), cast(1005 as bigint), cast('2026-09-30 23:30:00+00' as timestamptz),
+            cast('2026-09-30 23:30:01+00' as timestamptz), cast('a.jsonl' as varchar), cast(5 as bigint), cast(6 as
+            integer), cast(0 as integer), cast(null as bigint), cast(null as bigint), cast(null as bigint), cast(null
+            as bigint), cast(null as bigint), cast(null as bigint), cast(null as bigint), cast(null as bigint),
+            cast(null as bigint), cast(null as bigint), cast(null as bigint), cast(null as bigint), cast(null as
+            bigint), cast(null as bigint), cast(null as bigint), cast(null as bigint), cast(null as bigint)
+          union all
+          select
+            cast(1 as integer), cast('finance_month' as varchar), cast('0.1.0' as varchar), cast('kpark1' as
+            varchar), cast('s1' as varchar), cast(6 as bigint), cast('s1-6' as varchar), cast(7 as integer), cast(0
+            as integer), cast(1 as integer), cast(1006 as bigint), cast('2026-09-30 23:30:00+00' as timestamptz),
+            cast('2026-09-30 23:30:01+00' as timestamptz), cast('a.jsonl' as varchar), cast(6 as bigint), cast(6 as
+            integer), cast(7 as integer), cast(null as bigint), cast(2223 as bigint), cast(3335 as bigint), cast(4447
+            as bigint), cast(5559 as bigint), cast(6671 as bigint), cast(7783 as bigint), cast(8895 as bigint),
+            cast(10007 as bigint), cast(11119 as bigint), cast(12231 as bigint), cast(13343 as bigint), cast(14455 as
+            bigint), cast(15567 as bigint), cast(null as bigint), cast(null as bigint), cast(null as bigint)
+    expect:
+      format: sql
+      rows: |
+        select
+          cast(1 as integer) as schema_version, cast('finance_month' as varchar) as event_type, cast('0.1.0' as
+          varchar) as plugin_version, cast('kpark1' as varchar) as park_id, cast('s1' as varchar) as session_id,
+          cast(1 as bigint) as seq, cast('s1-1' as varchar) as event_id, cast(4 as integer) as game_year, cast(0 as
+          integer) as game_month, cast(1 as integer) as game_day, cast(1001 as bigint) as game_ticks_elapsed,
+          cast('2026-09-30 23:30:00+00' as timestamptz) as emitted_at, cast('2026-09-30 23:30:01+00' as
+          timestamptz) as received_at, cast('a.jsonl' as varchar) as _raw_file, cast(1 as bigint) as _raw_line,
+          cast(3 as integer) as statement_year, cast(7 as integer) as statement_month, cast(1234.5 as decimal(18,
+          2)) as ride_construction_usd, cast(222.3 as decimal(18, 2)) as ride_runningcosts_usd, cast(333.5 as
+          decimal(18, 2)) as land_purchase_usd, cast(444.7 as decimal(18, 2)) as landscaping_usd, cast(555.9 as
+          decimal(18, 2)) as park_entrance_tickets_usd, cast(667.1 as decimal(18, 2)) as park_ride_tickets_usd,
+          cast(778.3 as decimal(18, 2)) as shop_sales_usd, cast(889.5 as decimal(18, 2)) as shop_stock_usd,
+          cast(1000.7 as decimal(18, 2)) as food_drink_sales_usd, cast(1111.9 as decimal(18, 2)) as
+          food_drink_stock_usd, cast(1223.1 as decimal(18, 2)) as wages_usd, cast(1334.3 as decimal(18, 2)) as
+          marketing_usd, cast(1445.5 as decimal(18, 2)) as research_usd, cast(1556.7 as decimal(18, 2)) as
+          interest_usd, cast(1667.9 as decimal(18, 2)) as cash_usd, cast(1779.1 as decimal(18, 2)) as bank_loan_usd, cast(432.1 as decimal(18, 2)) as new_month_booked_usd
+        union all
+        select
+          cast(1 as integer), cast('finance_month' as varchar), cast('0.1.0' as varchar), cast('kpark1' as
+          varchar), cast('s1' as varchar), cast(2 as bigint), cast('s1-2' as varchar), cast(3 as integer), cast(3
+          as integer), cast(1 as integer), cast(1002 as bigint), cast('2026-09-30 23:30:00+00' as timestamptz),
+          cast('2026-09-30 23:30:01+00' as timestamptz), cast('a.jsonl' as varchar), cast(2 as bigint), cast(3 as
+          integer), cast(2 as integer), cast(-987.6 as decimal(18, 2)), cast(-222.3 as decimal(18, 2)), cast(-333.5
+          as decimal(18, 2)), cast(-444.7 as decimal(18, 2)), cast(-555.9 as decimal(18, 2)), cast(-667.1 as
+          decimal(18, 2)), cast(-778.3 as decimal(18, 2)), cast(-889.5 as decimal(18, 2)), cast(-1000.7 as
+          decimal(18, 2)), cast(-1111.9 as decimal(18, 2)), cast(-1223.1 as decimal(18, 2)), cast(-1334.3 as
+          decimal(18, 2)), cast(-1445.5 as decimal(18, 2)), cast(-1556.7 as decimal(18, 2)), cast(-1667.9 as
+          decimal(18, 2)), cast(1779.1 as decimal(18, 2)), cast(-876.5 as decimal(18, 2))
+        union all
+        select
+          cast(1 as integer), cast('finance_month' as varchar), cast('0.1.0' as varchar), cast('kpark1' as
+          varchar), cast('s1' as varchar), cast(3 as bigint), cast('s1-3' as varchar), cast(5 as integer), cast(1
+          as integer), cast(1 as integer), cast(1003 as bigint), cast('2026-09-30 23:30:00+00' as timestamptz),
+          cast('2026-09-30 23:30:01+00' as timestamptz), cast('a.jsonl' as varchar), cast(3 as bigint), cast(5 as
+          integer), cast(0 as integer), cast(111.1 as decimal(18, 2)), cast(222.3 as decimal(18, 2)), cast(333.5 as
+          decimal(18, 2)), cast(444.7 as decimal(18, 2)), cast(555.9 as decimal(18, 2)), cast(667.1 as decimal(18,
+          2)), cast(778.3 as decimal(18, 2)), cast(889.5 as decimal(18, 2)), cast(1000.7 as decimal(18, 2)),
+          cast(1111.9 as decimal(18, 2)), cast(555.5 as decimal(18, 2)), cast(1334.3 as decimal(18, 2)),
+          cast(1445.5 as decimal(18, 2)), cast(1556.7 as decimal(18, 2)), cast(1667.9 as decimal(18, 2)),
+          cast(1779.1 as decimal(18, 2)), cast(null as decimal(18, 2))
+        union all
+        select
+          cast(1 as integer), cast('finance_month' as varchar), cast('0.1.0' as varchar), cast('kpark1' as
+          varchar), cast('s1' as varchar), cast(4 as bigint), cast('s1-4' as varchar), cast(6 as integer), cast(0
+          as integer), cast(1 as integer), cast(1004 as bigint), cast('2026-09-30 23:30:00+00' as timestamptz),
+          cast('2026-09-30 23:30:01+00' as timestamptz), cast('a.jsonl' as varchar), cast(4 as bigint), cast(5 as
+          integer), cast(7 as integer), cast(900719925474099.3 as decimal(18, 2)), cast(900719925474099.5 as
+          decimal(18, 2)), cast(900719925474099.7 as decimal(18, 2)), cast(900719925474099.9 as decimal(18, 2)),
+          cast(900719925474100.1 as decimal(18, 2)), cast(900719925474100.3 as decimal(18, 2)),
+          cast(900719925474100.5 as decimal(18, 2)), cast(900719925474100.7 as decimal(18, 2)),
+          cast(900719925474100.9 as decimal(18, 2)), cast(900719925474101.1 as decimal(18, 2)),
+          cast(900719925474101.3 as decimal(18, 2)), cast(900719925474101.5 as decimal(18, 2)),
+          cast(900719925474101.7 as decimal(18, 2)), cast(900719925474101.9 as decimal(18, 2)),
+          cast(900719925474102.1 as decimal(18, 2)), cast(900719925474102.3 as decimal(18, 2)), cast(null as decimal(18, 2))
+        union all
+        select
+          cast(1 as integer), cast('finance_month' as varchar), cast('0.1.0' as varchar), cast('kpark1' as
+          varchar), cast('s1' as varchar), cast(5 as bigint), cast('s1-5' as varchar), cast(6 as integer), cast(1
+          as integer), cast(1 as integer), cast(1005 as bigint), cast('2026-09-30 23:30:00+00' as timestamptz),
+          cast('2026-09-30 23:30:01+00' as timestamptz), cast('a.jsonl' as varchar), cast(5 as bigint), cast(6 as
+          integer), cast(0 as integer), cast(null as decimal(18, 2)), cast(null as decimal(18, 2)), cast(null as
+          decimal(18, 2)), cast(null as decimal(18, 2)), cast(null as decimal(18, 2)), cast(null as decimal(18,
+          2)), cast(null as decimal(18, 2)), cast(null as decimal(18, 2)), cast(null as decimal(18, 2)), cast(null
+          as decimal(18, 2)), cast(null as decimal(18, 2)), cast(null as decimal(18, 2)), cast(null as decimal(18,
+          2)), cast(null as decimal(18, 2)), cast(null as decimal(18, 2)), cast(null as decimal(18, 2)), cast(null as decimal(18, 2))
+        union all
+        select
+          cast(1 as integer), cast('finance_month' as varchar), cast('0.1.0' as varchar), cast('kpark1' as
+          varchar), cast('s1' as varchar), cast(6 as bigint), cast('s1-6' as varchar), cast(7 as integer), cast(0
+          as integer), cast(1 as integer), cast(1006 as bigint), cast('2026-09-30 23:30:00+00' as timestamptz),
+          cast('2026-09-30 23:30:01+00' as timestamptz), cast('a.jsonl' as varchar), cast(6 as bigint), cast(6 as
+          integer), cast(7 as integer), cast(null as decimal(18, 2)), cast(222.3 as decimal(18, 2)), cast(333.5 as
+          decimal(18, 2)), cast(444.7 as decimal(18, 2)), cast(555.9 as decimal(18, 2)), cast(667.1 as decimal(18,
+          2)), cast(778.3 as decimal(18, 2)), cast(889.5 as decimal(18, 2)), cast(1000.7 as decimal(18, 2)),
+          cast(1111.9 as decimal(18, 2)), cast(1223.1 as decimal(18, 2)), cast(1334.3 as decimal(18, 2)),
+          cast(1445.5 as decimal(18, 2)), cast(1556.7 as decimal(18, 2)), cast(null as decimal(18, 2)), cast(null
+          as decimal(18, 2)), cast(null as decimal(18, 2))
+  - name: stg_finance_month_keeps_the_first_received_copy_of_each_event
+    description: >-
+      The model keeps the first received copy by received_at, then raw file, then raw line, proving the lower
+      _raw_line wins at equal received_at and _raw_file whatever the input order. Fourteen event ids each have two
+      deliveries; the lower line comes first in the input for two ids and last for twelve. The cases cover all
+      three ordering fields, and each loser differs in a money payload column so keeping the wrong copy shows in
+      the expected rows.
+    model: stg_finance_month
+    given:
+      - input: source('landing', 'finance_month')
+        format: sql
+        rows: |
+          select
+            cast(1 as integer) as schema_version, cast('finance_month' as varchar) as event_type, cast('0.1.0' as
+            varchar) as plugin_version, cast('kpark1' as varchar) as park_id, cast('s1' as varchar) as session_id,
+            cast(1 as bigint) as seq, cast('s1-1' as varchar) as event_id, cast(3 as integer) as game_year, cast(1 as
+            integer) as game_month, cast(1 as integer) as game_day, cast(2001 as bigint) as game_ticks_elapsed,
+            cast('2026-09-30 23:31:30+00' as timestamptz) as emitted_at, cast('2026-09-30 23:31:11+00' as
+            timestamptz) as received_at, cast('a.jsonl' as varchar) as _raw_file, cast(3 as bigint) as _raw_line,
+            cast(6 as integer) as statement_year, cast(1 as integer) as statement_month, cast(1011 as bigint) as
+            ride_construction_tenths, cast(2011 as bigint) as ride_runningcosts_tenths, cast(3011 as bigint) as
+            land_purchase_tenths, cast(4011 as bigint) as landscaping_tenths, cast(5011 as bigint) as
+            park_entrance_tickets_tenths, cast(6011 as bigint) as park_ride_tickets_tenths, cast(7011 as bigint) as
+            shop_sales_tenths, cast(8011 as bigint) as shop_stock_tenths, cast(9011 as bigint) as
+            food_drink_sales_tenths, cast(10011 as bigint) as food_drink_stock_tenths, cast(11011 as bigint) as
+            wages_tenths, cast(12011 as bigint) as marketing_tenths, cast(13011 as bigint) as research_tenths,
+            cast(14011 as bigint) as interest_tenths, cast(15011 as bigint) as cash_tenths, cast(16011 as bigint) as
+            bank_loan_tenths, cast(null as bigint) as new_month_booked_tenths
+          union all
+          select
+            cast(1 as integer), cast('finance_month' as varchar), cast('0.1.0' as varchar), cast('kpark1' as
+            varchar), cast('s1' as varchar), cast(1 as bigint), cast('s1-1' as varchar), cast(3 as integer), cast(1
+            as integer), cast(1 as integer), cast(2001 as bigint), cast('2026-09-30 23:11:30+00' as timestamptz),
+            cast('2026-09-30 23:31:11+00' as timestamptz), cast('a.jsonl' as varchar), cast(21 as bigint), cast(6 as
+            integer), cast(1 as integer), cast(1018 as bigint), cast(2011 as bigint), cast(3011 as bigint), cast(4011
+            as bigint), cast(5011 as bigint), cast(6011 as bigint), cast(7011 as bigint), cast(8011 as bigint),
+            cast(9011 as bigint), cast(10011 as bigint), cast(11011 as bigint), cast(12011 as bigint), cast(13011 as
+            bigint), cast(14011 as bigint), cast(15020 as bigint), cast(16011 as bigint), cast(null as bigint)
+          union all
+          select
+            cast(1 as integer), cast('finance_month' as varchar), cast('0.1.0' as varchar), cast('kpark1' as
+            varchar), cast('s1' as varchar), cast(2 as bigint), cast('s1-2' as varchar), cast(4 as integer), cast(2
+            as integer), cast(1 as integer), cast(2002 as bigint), cast('2026-09-30 23:12:30+00' as timestamptz),
+            cast('2026-09-30 23:32:12+00' as timestamptz), cast('a.jsonl' as varchar), cast(22 as bigint), cast(7 as
+            integer), cast(2 as integer), cast(1029 as bigint), cast(2022 as bigint), cast(3022 as bigint), cast(4022
+            as bigint), cast(5022 as bigint), cast(6022 as bigint), cast(7022 as bigint), cast(8022 as bigint),
+            cast(9022 as bigint), cast(10022 as bigint), cast(11022 as bigint), cast(12022 as bigint), cast(13022 as
+            bigint), cast(14022 as bigint), cast(15031 as bigint), cast(16022 as bigint), cast(null as bigint)
+          union all
+          select
+            cast(1 as integer), cast('finance_month' as varchar), cast('0.1.0' as varchar), cast('kpark1' as
+            varchar), cast('s1' as varchar), cast(2 as bigint), cast('s1-2' as varchar), cast(4 as integer), cast(2
+            as integer), cast(1 as integer), cast(2002 as bigint), cast('2026-09-30 23:32:30+00' as timestamptz),
+            cast('2026-09-30 23:32:12+00' as timestamptz), cast('a.jsonl' as varchar), cast(4 as bigint), cast(7 as
+            integer), cast(2 as integer), cast(1022 as bigint), cast(2022 as bigint), cast(3022 as bigint), cast(4022
+            as bigint), cast(5022 as bigint), cast(6022 as bigint), cast(7022 as bigint), cast(8022 as bigint),
+            cast(9022 as bigint), cast(10022 as bigint), cast(11022 as bigint), cast(12022 as bigint), cast(13022 as
+            bigint), cast(14022 as bigint), cast(15022 as bigint), cast(16022 as bigint), cast(null as bigint)
+          union all
+          select
+            cast(1 as integer), cast('finance_month' as varchar), cast('0.1.0' as varchar), cast('kpark1' as
+            varchar), cast('s1' as varchar), cast(3 as bigint), cast('s1-3' as varchar), cast(5 as integer), cast(3
+            as integer), cast(1 as integer), cast(2003 as bigint), cast('2026-09-30 23:13:30+00' as timestamptz),
+            cast('2026-09-30 23:33:13+00' as timestamptz), cast('a.jsonl' as varchar), cast(23 as bigint), cast(5 as
+            integer), cast(3 as integer), cast(1040 as bigint), cast(2033 as bigint), cast(3033 as bigint), cast(4033
+            as bigint), cast(5033 as bigint), cast(6033 as bigint), cast(7033 as bigint), cast(8033 as bigint),
+            cast(9033 as bigint), cast(10033 as bigint), cast(11033 as bigint), cast(12033 as bigint), cast(13033 as
+            bigint), cast(14033 as bigint), cast(15042 as bigint), cast(16033 as bigint), cast(null as bigint)
+          union all
+          select
+            cast(1 as integer), cast('finance_month' as varchar), cast('0.1.0' as varchar), cast('kpark1' as
+            varchar), cast('s1' as varchar), cast(3 as bigint), cast('s1-3' as varchar), cast(5 as integer), cast(3
+            as integer), cast(1 as integer), cast(2003 as bigint), cast('2026-09-30 23:33:30+00' as timestamptz),
+            cast('2026-09-30 23:33:13+00' as timestamptz), cast('a.jsonl' as varchar), cast(5 as bigint), cast(5 as
+            integer), cast(3 as integer), cast(1033 as bigint), cast(2033 as bigint), cast(3033 as bigint), cast(4033
+            as bigint), cast(5033 as bigint), cast(6033 as bigint), cast(7033 as bigint), cast(8033 as bigint),
+            cast(9033 as bigint), cast(10033 as bigint), cast(11033 as bigint), cast(12033 as bigint), cast(13033 as
+            bigint), cast(14033 as bigint), cast(15033 as bigint), cast(16033 as bigint), cast(null as bigint)
+          union all
+          select
+            cast(1 as integer), cast('finance_month' as varchar), cast('0.1.0' as varchar), cast('kpark1' as
+            varchar), cast('s1' as varchar), cast(4 as bigint), cast('s1-4' as varchar), cast(6 as integer), cast(4
+            as integer), cast(1 as integer), cast(2004 as bigint), cast('2026-09-30 23:14:30+00' as timestamptz),
+            cast('2026-09-30 23:34:14+00' as timestamptz), cast('a.jsonl' as varchar), cast(24 as bigint), cast(6 as
+            integer), cast(4 as integer), cast(1051 as bigint), cast(2044 as bigint), cast(3044 as bigint), cast(4044
+            as bigint), cast(5044 as bigint), cast(6044 as bigint), cast(7044 as bigint), cast(8044 as bigint),
+            cast(9044 as bigint), cast(10044 as bigint), cast(11044 as bigint), cast(12044 as bigint), cast(13044 as
+            bigint), cast(14044 as bigint), cast(15053 as bigint), cast(16044 as bigint), cast(null as bigint)
+          union all
+          select
+            cast(1 as integer), cast('finance_month' as varchar), cast('0.1.0' as varchar), cast('kpark1' as
+            varchar), cast('s1' as varchar), cast(4 as bigint), cast('s1-4' as varchar), cast(6 as integer), cast(4
+            as integer), cast(1 as integer), cast(2004 as bigint), cast('2026-09-30 23:34:30+00' as timestamptz),
+            cast('2026-09-30 23:34:14+00' as timestamptz), cast('a.jsonl' as varchar), cast(6 as bigint), cast(6 as
+            integer), cast(4 as integer), cast(1044 as bigint), cast(2044 as bigint), cast(3044 as bigint), cast(4044
+            as bigint), cast(5044 as bigint), cast(6044 as bigint), cast(7044 as bigint), cast(8044 as bigint),
+            cast(9044 as bigint), cast(10044 as bigint), cast(11044 as bigint), cast(12044 as bigint), cast(13044 as
+            bigint), cast(14044 as bigint), cast(15044 as bigint), cast(16044 as bigint), cast(null as bigint)
+          union all
+          select
+            cast(1 as integer), cast('finance_month' as varchar), cast('0.1.0' as varchar), cast('kpark1' as
+            varchar), cast('s1' as varchar), cast(5 as bigint), cast('s1-5' as varchar), cast(7 as integer), cast(5
+            as integer), cast(1 as integer), cast(2005 as bigint), cast('2026-09-30 23:15:30+00' as timestamptz),
+            cast('2026-09-30 23:35:15+00' as timestamptz), cast('a.jsonl' as varchar), cast(25 as bigint), cast(7 as
+            integer), cast(5 as integer), cast(1062 as bigint), cast(2055 as bigint), cast(3055 as bigint), cast(4055
+            as bigint), cast(5055 as bigint), cast(6055 as bigint), cast(7055 as bigint), cast(8055 as bigint),
+            cast(9055 as bigint), cast(10055 as bigint), cast(11055 as bigint), cast(12055 as bigint), cast(13055 as
+            bigint), cast(14055 as bigint), cast(15064 as bigint), cast(16055 as bigint), cast(null as bigint)
+          union all
+          select
+            cast(1 as integer), cast('finance_month' as varchar), cast('0.1.0' as varchar), cast('kpark1' as
+            varchar), cast('s1' as varchar), cast(5 as bigint), cast('s1-5' as varchar), cast(7 as integer), cast(5
+            as integer), cast(1 as integer), cast(2005 as bigint), cast('2026-09-30 23:35:30+00' as timestamptz),
+            cast('2026-09-30 23:35:15+00' as timestamptz), cast('a.jsonl' as varchar), cast(7 as bigint), cast(7 as
+            integer), cast(5 as integer), cast(1055 as bigint), cast(2055 as bigint), cast(3055 as bigint), cast(4055
+            as bigint), cast(5055 as bigint), cast(6055 as bigint), cast(7055 as bigint), cast(8055 as bigint),
+            cast(9055 as bigint), cast(10055 as bigint), cast(11055 as bigint), cast(12055 as bigint), cast(13055 as
+            bigint), cast(14055 as bigint), cast(15055 as bigint), cast(16055 as bigint), cast(null as bigint)
+          union all
+          select
+            cast(1 as integer), cast('finance_month' as varchar), cast('0.1.0' as varchar), cast('kpark1' as
+            varchar), cast('s1' as varchar), cast(6 as bigint), cast('s1-6' as varchar), cast(8 as integer), cast(6
+            as integer), cast(1 as integer), cast(2006 as bigint), cast('2026-09-30 23:16:30+00' as timestamptz),
+            cast('2026-09-30 23:30:16+00' as timestamptz), cast('a.jsonl' as varchar), cast(26 as bigint), cast(5 as
+            integer), cast(6 as integer), cast(1073 as bigint), cast(2066 as bigint), cast(3066 as bigint), cast(4066
+            as bigint), cast(5066 as bigint), cast(6066 as bigint), cast(7066 as bigint), cast(8066 as bigint),
+            cast(9066 as bigint), cast(10066 as bigint), cast(11066 as bigint), cast(12066 as bigint), cast(13066 as
+            bigint), cast(14066 as bigint), cast(15075 as bigint), cast(16066 as bigint), cast(null as bigint)
+          union all
+          select
+            cast(1 as integer), cast('finance_month' as varchar), cast('0.1.0' as varchar), cast('kpark1' as
+            varchar), cast('s1' as varchar), cast(6 as bigint), cast('s1-6' as varchar), cast(8 as integer), cast(6
+            as integer), cast(1 as integer), cast(2006 as bigint), cast('2026-09-30 23:36:30+00' as timestamptz),
+            cast('2026-09-30 23:30:16+00' as timestamptz), cast('a.jsonl' as varchar), cast(8 as bigint), cast(5 as
+            integer), cast(6 as integer), cast(1066 as bigint), cast(2066 as bigint), cast(3066 as bigint), cast(4066
+            as bigint), cast(5066 as bigint), cast(6066 as bigint), cast(7066 as bigint), cast(8066 as bigint),
+            cast(9066 as bigint), cast(10066 as bigint), cast(11066 as bigint), cast(12066 as bigint), cast(13066 as
+            bigint), cast(14066 as bigint), cast(15066 as bigint), cast(16066 as bigint), cast(null as bigint)
+          union all
+          select
+            cast(1 as integer), cast('finance_month' as varchar), cast('0.1.0' as varchar), cast('kpark1' as
+            varchar), cast('s1' as varchar), cast(7 as bigint), cast('s1-7' as varchar), cast(9 as integer), cast(7
+            as integer), cast(1 as integer), cast(2007 as bigint), cast('2026-09-30 23:37:30+00' as timestamptz),
+            cast('2026-09-30 23:31:17+00' as timestamptz), cast('b.jsonl' as varchar), cast(9 as bigint), cast(6 as
+            integer), cast(7 as integer), cast(1077 as bigint), cast(2077 as bigint), cast(3077 as bigint), cast(4077
+            as bigint), cast(5077 as bigint), cast(6077 as bigint), cast(7077 as bigint), cast(8077 as bigint),
+            cast(9077 as bigint), cast(10077 as bigint), cast(11077 as bigint), cast(12077 as bigint), cast(13077 as
+            bigint), cast(14077 as bigint), cast(15077 as bigint), cast(16077 as bigint), cast(null as bigint)
+          union all
+          select
+            cast(1 as integer), cast('finance_month' as varchar), cast('0.1.0' as varchar), cast('kpark1' as
+            varchar), cast('s1' as varchar), cast(7 as bigint), cast('s1-7' as varchar), cast(9 as integer), cast(7
+            as integer), cast(1 as integer), cast(2007 as bigint), cast('2026-09-30 23:17:30+00' as timestamptz),
+            cast('2026-09-30 23:31:17+00' as timestamptz), cast('b.jsonl' as varchar), cast(27 as bigint), cast(6 as
+            integer), cast(7 as integer), cast(1084 as bigint), cast(2077 as bigint), cast(3077 as bigint), cast(4077
+            as bigint), cast(5077 as bigint), cast(6077 as bigint), cast(7077 as bigint), cast(8077 as bigint),
+            cast(9077 as bigint), cast(10077 as bigint), cast(11077 as bigint), cast(12077 as bigint), cast(13077 as
+            bigint), cast(14077 as bigint), cast(15086 as bigint), cast(16077 as bigint), cast(null as bigint)
+          union all
+          select
+            cast(1 as integer), cast('finance_month' as varchar), cast('0.1.0' as varchar), cast('kpark1' as
+            varchar), cast('s1' as varchar), cast(8 as bigint), cast('s1-8' as varchar), cast(10 as integer), cast(0
+            as integer), cast(1 as integer), cast(2008 as bigint), cast('2026-09-30 23:18:30+00' as timestamptz),
+            cast('2026-09-30 23:32:18+00' as timestamptz), cast('b.jsonl' as varchar), cast(28 as bigint), cast(7 as
+            integer), cast(0 as integer), cast(1095 as bigint), cast(2088 as bigint), cast(3088 as bigint), cast(4088
+            as bigint), cast(5088 as bigint), cast(6088 as bigint), cast(7088 as bigint), cast(8088 as bigint),
+            cast(9088 as bigint), cast(10088 as bigint), cast(11088 as bigint), cast(12088 as bigint), cast(13088 as
+            bigint), cast(14088 as bigint), cast(15097 as bigint), cast(16088 as bigint), cast(null as bigint)
+          union all
+          select
+            cast(1 as integer), cast('finance_month' as varchar), cast('0.1.0' as varchar), cast('kpark1' as
+            varchar), cast('s1' as varchar), cast(8 as bigint), cast('s1-8' as varchar), cast(10 as integer), cast(0
+            as integer), cast(1 as integer), cast(2008 as bigint), cast('2026-09-30 23:38:30+00' as timestamptz),
+            cast('2026-09-30 23:32:18+00' as timestamptz), cast('b.jsonl' as varchar), cast(10 as bigint), cast(7 as
+            integer), cast(0 as integer), cast(1088 as bigint), cast(2088 as bigint), cast(3088 as bigint), cast(4088
+            as bigint), cast(5088 as bigint), cast(6088 as bigint), cast(7088 as bigint), cast(8088 as bigint),
+            cast(9088 as bigint), cast(10088 as bigint), cast(11088 as bigint), cast(12088 as bigint), cast(13088 as
+            bigint), cast(14088 as bigint), cast(15088 as bigint), cast(16088 as bigint), cast(null as bigint)
+          union all
+          select
+            cast(1 as integer), cast('finance_month' as varchar), cast('0.1.0' as varchar), cast('kpark1' as
+            varchar), cast('s1' as varchar), cast(9 as bigint), cast('s1-9' as varchar), cast(11 as integer), cast(1
+            as integer), cast(1 as integer), cast(2009 as bigint), cast('2026-09-30 23:19:30+00' as timestamptz),
+            cast('2026-09-30 23:33:19+00' as timestamptz), cast('b.jsonl' as varchar), cast(29 as bigint), cast(5 as
+            integer), cast(1 as integer), cast(1106 as bigint), cast(2099 as bigint), cast(3099 as bigint), cast(4099
+            as bigint), cast(5099 as bigint), cast(6099 as bigint), cast(7099 as bigint), cast(8099 as bigint),
+            cast(9099 as bigint), cast(10099 as bigint), cast(11099 as bigint), cast(12099 as bigint), cast(13099 as
+            bigint), cast(14099 as bigint), cast(15108 as bigint), cast(16099 as bigint), cast(null as bigint)
+          union all
+          select
+            cast(1 as integer), cast('finance_month' as varchar), cast('0.1.0' as varchar), cast('kpark1' as
+            varchar), cast('s1' as varchar), cast(9 as bigint), cast('s1-9' as varchar), cast(11 as integer), cast(1
+            as integer), cast(1 as integer), cast(2009 as bigint), cast('2026-09-30 23:39:30+00' as timestamptz),
+            cast('2026-09-30 23:33:19+00' as timestamptz), cast('b.jsonl' as varchar), cast(11 as bigint), cast(5 as
+            integer), cast(1 as integer), cast(1099 as bigint), cast(2099 as bigint), cast(3099 as bigint), cast(4099
+            as bigint), cast(5099 as bigint), cast(6099 as bigint), cast(7099 as bigint), cast(8099 as bigint),
+            cast(9099 as bigint), cast(10099 as bigint), cast(11099 as bigint), cast(12099 as bigint), cast(13099 as
+            bigint), cast(14099 as bigint), cast(15099 as bigint), cast(16099 as bigint), cast(null as bigint)
+          union all
+          select
+            cast(1 as integer), cast('finance_month' as varchar), cast('0.1.0' as varchar), cast('kpark1' as
+            varchar), cast('s1' as varchar), cast(10 as bigint), cast('s1-10' as varchar), cast(12 as integer),
+            cast(2 as integer), cast(1 as integer), cast(2010 as bigint), cast('2026-09-30 23:20:30+00' as
+            timestamptz), cast('2026-09-30 23:34:20+00' as timestamptz), cast('b.jsonl' as varchar), cast(30 as
+            bigint), cast(6 as integer), cast(2 as integer), cast(1117 as bigint), cast(2110 as bigint), cast(3110 as
+            bigint), cast(4110 as bigint), cast(5110 as bigint), cast(6110 as bigint), cast(7110 as bigint),
+            cast(8110 as bigint), cast(9110 as bigint), cast(10110 as bigint), cast(11110 as bigint), cast(12110 as
+            bigint), cast(13110 as bigint), cast(14110 as bigint), cast(15119 as bigint), cast(16110 as bigint), cast(null as bigint)
+          union all
+          select
+            cast(1 as integer), cast('finance_month' as varchar), cast('0.1.0' as varchar), cast('kpark1' as
+            varchar), cast('s1' as varchar), cast(10 as bigint), cast('s1-10' as varchar), cast(12 as integer),
+            cast(2 as integer), cast(1 as integer), cast(2010 as bigint), cast('2026-09-30 23:40:30+00' as
+            timestamptz), cast('2026-09-30 23:34:20+00' as timestamptz), cast('b.jsonl' as varchar), cast(12 as
+            bigint), cast(6 as integer), cast(2 as integer), cast(1110 as bigint), cast(2110 as bigint), cast(3110 as
+            bigint), cast(4110 as bigint), cast(5110 as bigint), cast(6110 as bigint), cast(7110 as bigint),
+            cast(8110 as bigint), cast(9110 as bigint), cast(10110 as bigint), cast(11110 as bigint), cast(12110 as
+            bigint), cast(13110 as bigint), cast(14110 as bigint), cast(15110 as bigint), cast(16110 as bigint), cast(null as bigint)
+          union all
+          select
+            cast(1 as integer), cast('finance_month' as varchar), cast('0.1.0' as varchar), cast('kpark1' as
+            varchar), cast('s1' as varchar), cast(11 as bigint), cast('s1-11' as varchar), cast(13 as integer),
+            cast(3 as integer), cast(1 as integer), cast(2011 as bigint), cast('2026-09-30 23:21:30+00' as
+            timestamptz), cast('2026-09-30 23:35:21+00' as timestamptz), cast('b.jsonl' as varchar), cast(31 as
+            bigint), cast(7 as integer), cast(3 as integer), cast(1128 as bigint), cast(2121 as bigint), cast(3121 as
+            bigint), cast(4121 as bigint), cast(5121 as bigint), cast(6121 as bigint), cast(7121 as bigint),
+            cast(8121 as bigint), cast(9121 as bigint), cast(10121 as bigint), cast(11121 as bigint), cast(12121 as
+            bigint), cast(13121 as bigint), cast(14121 as bigint), cast(15130 as bigint), cast(16121 as bigint), cast(null as bigint)
+          union all
+          select
+            cast(1 as integer), cast('finance_month' as varchar), cast('0.1.0' as varchar), cast('kpark1' as
+            varchar), cast('s1' as varchar), cast(11 as bigint), cast('s1-11' as varchar), cast(13 as integer),
+            cast(3 as integer), cast(1 as integer), cast(2011 as bigint), cast('2026-09-30 23:41:30+00' as
+            timestamptz), cast('2026-09-30 23:35:21+00' as timestamptz), cast('b.jsonl' as varchar), cast(13 as
+            bigint), cast(7 as integer), cast(3 as integer), cast(1121 as bigint), cast(2121 as bigint), cast(3121 as
+            bigint), cast(4121 as bigint), cast(5121 as bigint), cast(6121 as bigint), cast(7121 as bigint),
+            cast(8121 as bigint), cast(9121 as bigint), cast(10121 as bigint), cast(11121 as bigint), cast(12121 as
+            bigint), cast(13121 as bigint), cast(14121 as bigint), cast(15121 as bigint), cast(16121 as bigint), cast(null as bigint)
+          union all
+          select
+            cast(1 as integer), cast('finance_month' as varchar), cast('0.1.0' as varchar), cast('kpark1' as
+            varchar), cast('s1' as varchar), cast(12 as bigint), cast('s1-12' as varchar), cast(14 as integer),
+            cast(4 as integer), cast(1 as integer), cast(2012 as bigint), cast('2026-09-30 23:22:30+00' as
+            timestamptz), cast('2026-09-30 23:30:22+00' as timestamptz), cast('b.jsonl' as varchar), cast(32 as
+            bigint), cast(5 as integer), cast(4 as integer), cast(1139 as bigint), cast(2132 as bigint), cast(3132 as
+            bigint), cast(4132 as bigint), cast(5132 as bigint), cast(6132 as bigint), cast(7132 as bigint),
+            cast(8132 as bigint), cast(9132 as bigint), cast(10132 as bigint), cast(11132 as bigint), cast(12132 as
+            bigint), cast(13132 as bigint), cast(14132 as bigint), cast(15141 as bigint), cast(16132 as bigint), cast(null as bigint)
+          union all
+          select
+            cast(1 as integer), cast('finance_month' as varchar), cast('0.1.0' as varchar), cast('kpark1' as
+            varchar), cast('s1' as varchar), cast(12 as bigint), cast('s1-12' as varchar), cast(14 as integer),
+            cast(4 as integer), cast(1 as integer), cast(2012 as bigint), cast('2026-09-30 23:42:30+00' as
+            timestamptz), cast('2026-09-30 23:30:22+00' as timestamptz), cast('b.jsonl' as varchar), cast(14 as
+            bigint), cast(5 as integer), cast(4 as integer), cast(1132 as bigint), cast(2132 as bigint), cast(3132 as
+            bigint), cast(4132 as bigint), cast(5132 as bigint), cast(6132 as bigint), cast(7132 as bigint),
+            cast(8132 as bigint), cast(9132 as bigint), cast(10132 as bigint), cast(11132 as bigint), cast(12132 as
+            bigint), cast(13132 as bigint), cast(14132 as bigint), cast(15132 as bigint), cast(16132 as bigint), cast(null as bigint)
+          union all
+          select
+            cast(1 as integer), cast('finance_month' as varchar), cast('0.1.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(13 as bigint),
+            cast('s1-13' as varchar), cast(15 as integer), cast(5 as integer),
+            cast(1 as integer), cast(2013 as bigint), cast('2026-09-30 23:10:13+00' as timestamptz),
+            cast('2026-09-30 23:30:13+00' as timestamptz), cast('a.jsonl' as varchar), cast(50 as bigint),
+            cast(8 as integer), cast(5 as integer), cast(1133 as bigint),
+            cast(2133 as bigint), cast(3133 as bigint), cast(4133 as bigint),
+            cast(5133 as bigint), cast(6133 as bigint), cast(7133 as bigint),
+            cast(8133 as bigint), cast(9133 as bigint), cast(10133 as bigint),
+            cast(11133 as bigint), cast(12133 as bigint), cast(13133 as bigint),
+            cast(14133 as bigint), cast(15133 as bigint), cast(16133 as bigint), cast(null as bigint)
+          union all
+          select
+            cast(1 as integer), cast('finance_month' as varchar), cast('0.1.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(13 as bigint),
+            cast('s1-13' as varchar), cast(15 as integer), cast(5 as integer),
+            cast(1 as integer), cast(2013 as bigint), cast('2026-09-30 23:50:13+00' as timestamptz),
+            cast('2026-09-30 23:31:13+00' as timestamptz), cast('a.jsonl' as varchar), cast(49 as bigint),
+            cast(8 as integer), cast(5 as integer), cast(1313 as bigint),
+            cast(2133 as bigint), cast(3133 as bigint), cast(4133 as bigint),
+            cast(5133 as bigint), cast(6133 as bigint), cast(7133 as bigint),
+            cast(8133 as bigint), cast(9133 as bigint), cast(10133 as bigint),
+            cast(11133 as bigint), cast(12133 as bigint), cast(13133 as bigint),
+            cast(14133 as bigint), cast(15133 as bigint), cast(16133 as bigint), cast(null as bigint)
+          union all
+          select
+            cast(1 as integer), cast('finance_month' as varchar), cast('0.1.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(14 as bigint),
+            cast('s1-14' as varchar), cast(16 as integer), cast(6 as integer),
+            cast(1 as integer), cast(2014 as bigint), cast('2026-09-30 23:51:14+00' as timestamptz),
+            cast('2026-09-30 23:32:14+00' as timestamptz), cast('b.jsonl' as varchar), cast(2 as bigint),
+            cast(8 as integer), cast(6 as integer), cast(1144 as bigint),
+            cast(2144 as bigint), cast(3144 as bigint), cast(4144 as bigint),
+            cast(5144 as bigint), cast(6144 as bigint), cast(7144 as bigint),
+            cast(8144 as bigint), cast(9144 as bigint), cast(10144 as bigint),
+            cast(11144 as bigint), cast(12144 as bigint), cast(13144 as bigint),
+            cast(14144 as bigint), cast(15144 as bigint), cast(16144 as bigint), cast(null as bigint)
+          union all
+          select
+            cast(1 as integer), cast('finance_month' as varchar), cast('0.1.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(14 as bigint),
+            cast('s1-14' as varchar), cast(16 as integer), cast(6 as integer),
+            cast(1 as integer), cast(2014 as bigint), cast('2026-09-30 23:52:14+00' as timestamptz),
+            cast('2026-09-30 23:32:14+00' as timestamptz), cast('a.jsonl' as varchar), cast(10 as bigint),
+            cast(8 as integer), cast(6 as integer), cast(1144 as bigint),
+            cast(2144 as bigint), cast(3144 as bigint), cast(4144 as bigint),
+            cast(5144 as bigint), cast(6144 as bigint), cast(7144 as bigint),
+            cast(8144 as bigint), cast(9144 as bigint), cast(10144 as bigint),
+            cast(11144 as bigint), cast(12144 as bigint), cast(13144 as bigint),
+            cast(14144 as bigint), cast(15145 as bigint), cast(16144 as bigint), cast(null as bigint)
+    expect:
+      format: sql
+      rows: |
+        select
+          cast(1 as integer) as schema_version, cast('finance_month' as varchar) as event_type, cast('0.1.0' as
+          varchar) as plugin_version, cast('kpark1' as varchar) as park_id, cast('s1' as varchar) as session_id,
+          cast(1 as bigint) as seq, cast('s1-1' as varchar) as event_id, cast(3 as integer) as game_year, cast(1 as
+          integer) as game_month, cast(1 as integer) as game_day, cast(2001 as bigint) as game_ticks_elapsed,
+          cast('2026-09-30 23:31:30+00' as timestamptz) as emitted_at, cast('2026-09-30 23:31:11+00' as
+          timestamptz) as received_at, cast('a.jsonl' as varchar) as _raw_file, cast(3 as bigint) as _raw_line,
+          cast(6 as integer) as statement_year, cast(1 as integer) as statement_month, cast(101.1 as decimal(18,
+          2)) as ride_construction_usd, cast(201.1 as decimal(18, 2)) as ride_runningcosts_usd, cast(301.1 as
+          decimal(18, 2)) as land_purchase_usd, cast(401.1 as decimal(18, 2)) as landscaping_usd, cast(501.1 as
+          decimal(18, 2)) as park_entrance_tickets_usd, cast(601.1 as decimal(18, 2)) as park_ride_tickets_usd,
+          cast(701.1 as decimal(18, 2)) as shop_sales_usd, cast(801.1 as decimal(18, 2)) as shop_stock_usd,
+          cast(901.1 as decimal(18, 2)) as food_drink_sales_usd, cast(1001.1 as decimal(18, 2)) as
+          food_drink_stock_usd, cast(1101.1 as decimal(18, 2)) as wages_usd, cast(1201.1 as decimal(18, 2)) as
+          marketing_usd, cast(1301.1 as decimal(18, 2)) as research_usd, cast(1401.1 as decimal(18, 2)) as
+          interest_usd, cast(1501.1 as decimal(18, 2)) as cash_usd, cast(1601.1 as decimal(18, 2)) as bank_loan_usd, cast(null as decimal(18, 2)) as new_month_booked_usd
+        union all
+        select
+          cast(1 as integer), cast('finance_month' as varchar), cast('0.1.0' as varchar), cast('kpark1' as
+          varchar), cast('s1' as varchar), cast(2 as bigint), cast('s1-2' as varchar), cast(4 as integer), cast(2
+          as integer), cast(1 as integer), cast(2002 as bigint), cast('2026-09-30 23:32:30+00' as timestamptz),
+          cast('2026-09-30 23:32:12+00' as timestamptz), cast('a.jsonl' as varchar), cast(4 as bigint), cast(7 as
+          integer), cast(2 as integer), cast(102.2 as decimal(18, 2)), cast(202.2 as decimal(18, 2)), cast(302.2 as
+          decimal(18, 2)), cast(402.2 as decimal(18, 2)), cast(502.2 as decimal(18, 2)), cast(602.2 as decimal(18,
+          2)), cast(702.2 as decimal(18, 2)), cast(802.2 as decimal(18, 2)), cast(902.2 as decimal(18, 2)),
+          cast(1002.2 as decimal(18, 2)), cast(1102.2 as decimal(18, 2)), cast(1202.2 as decimal(18, 2)),
+          cast(1302.2 as decimal(18, 2)), cast(1402.2 as decimal(18, 2)), cast(1502.2 as decimal(18, 2)),
+          cast(1602.2 as decimal(18, 2)), cast(null as decimal(18, 2))
+        union all
+        select
+          cast(1 as integer), cast('finance_month' as varchar), cast('0.1.0' as varchar), cast('kpark1' as
+          varchar), cast('s1' as varchar), cast(3 as bigint), cast('s1-3' as varchar), cast(5 as integer), cast(3
+          as integer), cast(1 as integer), cast(2003 as bigint), cast('2026-09-30 23:33:30+00' as timestamptz),
+          cast('2026-09-30 23:33:13+00' as timestamptz), cast('a.jsonl' as varchar), cast(5 as bigint), cast(5 as
+          integer), cast(3 as integer), cast(103.3 as decimal(18, 2)), cast(203.3 as decimal(18, 2)), cast(303.3 as
+          decimal(18, 2)), cast(403.3 as decimal(18, 2)), cast(503.3 as decimal(18, 2)), cast(603.3 as decimal(18,
+          2)), cast(703.3 as decimal(18, 2)), cast(803.3 as decimal(18, 2)), cast(903.3 as decimal(18, 2)),
+          cast(1003.3 as decimal(18, 2)), cast(1103.3 as decimal(18, 2)), cast(1203.3 as decimal(18, 2)),
+          cast(1303.3 as decimal(18, 2)), cast(1403.3 as decimal(18, 2)), cast(1503.3 as decimal(18, 2)),
+          cast(1603.3 as decimal(18, 2)), cast(null as decimal(18, 2))
+        union all
+        select
+          cast(1 as integer), cast('finance_month' as varchar), cast('0.1.0' as varchar), cast('kpark1' as
+          varchar), cast('s1' as varchar), cast(4 as bigint), cast('s1-4' as varchar), cast(6 as integer), cast(4
+          as integer), cast(1 as integer), cast(2004 as bigint), cast('2026-09-30 23:34:30+00' as timestamptz),
+          cast('2026-09-30 23:34:14+00' as timestamptz), cast('a.jsonl' as varchar), cast(6 as bigint), cast(6 as
+          integer), cast(4 as integer), cast(104.4 as decimal(18, 2)), cast(204.4 as decimal(18, 2)), cast(304.4 as
+          decimal(18, 2)), cast(404.4 as decimal(18, 2)), cast(504.4 as decimal(18, 2)), cast(604.4 as decimal(18,
+          2)), cast(704.4 as decimal(18, 2)), cast(804.4 as decimal(18, 2)), cast(904.4 as decimal(18, 2)),
+          cast(1004.4 as decimal(18, 2)), cast(1104.4 as decimal(18, 2)), cast(1204.4 as decimal(18, 2)),
+          cast(1304.4 as decimal(18, 2)), cast(1404.4 as decimal(18, 2)), cast(1504.4 as decimal(18, 2)),
+          cast(1604.4 as decimal(18, 2)), cast(null as decimal(18, 2))
+        union all
+        select
+          cast(1 as integer), cast('finance_month' as varchar), cast('0.1.0' as varchar), cast('kpark1' as
+          varchar), cast('s1' as varchar), cast(5 as bigint), cast('s1-5' as varchar), cast(7 as integer), cast(5
+          as integer), cast(1 as integer), cast(2005 as bigint), cast('2026-09-30 23:35:30+00' as timestamptz),
+          cast('2026-09-30 23:35:15+00' as timestamptz), cast('a.jsonl' as varchar), cast(7 as bigint), cast(7 as
+          integer), cast(5 as integer), cast(105.5 as decimal(18, 2)), cast(205.5 as decimal(18, 2)), cast(305.5 as
+          decimal(18, 2)), cast(405.5 as decimal(18, 2)), cast(505.5 as decimal(18, 2)), cast(605.5 as decimal(18,
+          2)), cast(705.5 as decimal(18, 2)), cast(805.5 as decimal(18, 2)), cast(905.5 as decimal(18, 2)),
+          cast(1005.5 as decimal(18, 2)), cast(1105.5 as decimal(18, 2)), cast(1205.5 as decimal(18, 2)),
+          cast(1305.5 as decimal(18, 2)), cast(1405.5 as decimal(18, 2)), cast(1505.5 as decimal(18, 2)),
+          cast(1605.5 as decimal(18, 2)), cast(null as decimal(18, 2))
+        union all
+        select
+          cast(1 as integer), cast('finance_month' as varchar), cast('0.1.0' as varchar), cast('kpark1' as
+          varchar), cast('s1' as varchar), cast(6 as bigint), cast('s1-6' as varchar), cast(8 as integer), cast(6
+          as integer), cast(1 as integer), cast(2006 as bigint), cast('2026-09-30 23:36:30+00' as timestamptz),
+          cast('2026-09-30 23:30:16+00' as timestamptz), cast('a.jsonl' as varchar), cast(8 as bigint), cast(5 as
+          integer), cast(6 as integer), cast(106.6 as decimal(18, 2)), cast(206.6 as decimal(18, 2)), cast(306.6 as
+          decimal(18, 2)), cast(406.6 as decimal(18, 2)), cast(506.6 as decimal(18, 2)), cast(606.6 as decimal(18,
+          2)), cast(706.6 as decimal(18, 2)), cast(806.6 as decimal(18, 2)), cast(906.6 as decimal(18, 2)),
+          cast(1006.6 as decimal(18, 2)), cast(1106.6 as decimal(18, 2)), cast(1206.6 as decimal(18, 2)),
+          cast(1306.6 as decimal(18, 2)), cast(1406.6 as decimal(18, 2)), cast(1506.6 as decimal(18, 2)),
+          cast(1606.6 as decimal(18, 2)), cast(null as decimal(18, 2))
+        union all
+        select
+          cast(1 as integer), cast('finance_month' as varchar), cast('0.1.0' as varchar), cast('kpark1' as
+          varchar), cast('s1' as varchar), cast(7 as bigint), cast('s1-7' as varchar), cast(9 as integer), cast(7
+          as integer), cast(1 as integer), cast(2007 as bigint), cast('2026-09-30 23:37:30+00' as timestamptz),
+          cast('2026-09-30 23:31:17+00' as timestamptz), cast('b.jsonl' as varchar), cast(9 as bigint), cast(6 as
+          integer), cast(7 as integer), cast(107.7 as decimal(18, 2)), cast(207.7 as decimal(18, 2)), cast(307.7 as
+          decimal(18, 2)), cast(407.7 as decimal(18, 2)), cast(507.7 as decimal(18, 2)), cast(607.7 as decimal(18,
+          2)), cast(707.7 as decimal(18, 2)), cast(807.7 as decimal(18, 2)), cast(907.7 as decimal(18, 2)),
+          cast(1007.7 as decimal(18, 2)), cast(1107.7 as decimal(18, 2)), cast(1207.7 as decimal(18, 2)),
+          cast(1307.7 as decimal(18, 2)), cast(1407.7 as decimal(18, 2)), cast(1507.7 as decimal(18, 2)),
+          cast(1607.7 as decimal(18, 2)), cast(null as decimal(18, 2))
+        union all
+        select
+          cast(1 as integer), cast('finance_month' as varchar), cast('0.1.0' as varchar), cast('kpark1' as
+          varchar), cast('s1' as varchar), cast(8 as bigint), cast('s1-8' as varchar), cast(10 as integer), cast(0
+          as integer), cast(1 as integer), cast(2008 as bigint), cast('2026-09-30 23:38:30+00' as timestamptz),
+          cast('2026-09-30 23:32:18+00' as timestamptz), cast('b.jsonl' as varchar), cast(10 as bigint), cast(7 as
+          integer), cast(0 as integer), cast(108.8 as decimal(18, 2)), cast(208.8 as decimal(18, 2)), cast(308.8 as
+          decimal(18, 2)), cast(408.8 as decimal(18, 2)), cast(508.8 as decimal(18, 2)), cast(608.8 as decimal(18,
+          2)), cast(708.8 as decimal(18, 2)), cast(808.8 as decimal(18, 2)), cast(908.8 as decimal(18, 2)),
+          cast(1008.8 as decimal(18, 2)), cast(1108.8 as decimal(18, 2)), cast(1208.8 as decimal(18, 2)),
+          cast(1308.8 as decimal(18, 2)), cast(1408.8 as decimal(18, 2)), cast(1508.8 as decimal(18, 2)),
+          cast(1608.8 as decimal(18, 2)), cast(null as decimal(18, 2))
+        union all
+        select
+          cast(1 as integer), cast('finance_month' as varchar), cast('0.1.0' as varchar), cast('kpark1' as
+          varchar), cast('s1' as varchar), cast(9 as bigint), cast('s1-9' as varchar), cast(11 as integer), cast(1
+          as integer), cast(1 as integer), cast(2009 as bigint), cast('2026-09-30 23:39:30+00' as timestamptz),
+          cast('2026-09-30 23:33:19+00' as timestamptz), cast('b.jsonl' as varchar), cast(11 as bigint), cast(5 as
+          integer), cast(1 as integer), cast(109.9 as decimal(18, 2)), cast(209.9 as decimal(18, 2)), cast(309.9 as
+          decimal(18, 2)), cast(409.9 as decimal(18, 2)), cast(509.9 as decimal(18, 2)), cast(609.9 as decimal(18,
+          2)), cast(709.9 as decimal(18, 2)), cast(809.9 as decimal(18, 2)), cast(909.9 as decimal(18, 2)),
+          cast(1009.9 as decimal(18, 2)), cast(1109.9 as decimal(18, 2)), cast(1209.9 as decimal(18, 2)),
+          cast(1309.9 as decimal(18, 2)), cast(1409.9 as decimal(18, 2)), cast(1509.9 as decimal(18, 2)),
+          cast(1609.9 as decimal(18, 2)), cast(null as decimal(18, 2))
+        union all
+        select
+          cast(1 as integer), cast('finance_month' as varchar), cast('0.1.0' as varchar), cast('kpark1' as
+          varchar), cast('s1' as varchar), cast(10 as bigint), cast('s1-10' as varchar), cast(12 as integer),
+          cast(2 as integer), cast(1 as integer), cast(2010 as bigint), cast('2026-09-30 23:40:30+00' as
+          timestamptz), cast('2026-09-30 23:34:20+00' as timestamptz), cast('b.jsonl' as varchar), cast(12 as
+          bigint), cast(6 as integer), cast(2 as integer), cast(111.0 as decimal(18, 2)), cast(211.0 as decimal(18,
+          2)), cast(311.0 as decimal(18, 2)), cast(411.0 as decimal(18, 2)), cast(511.0 as decimal(18, 2)),
+          cast(611.0 as decimal(18, 2)), cast(711.0 as decimal(18, 2)), cast(811.0 as decimal(18, 2)), cast(911.0
+          as decimal(18, 2)), cast(1011.0 as decimal(18, 2)), cast(1111.0 as decimal(18, 2)), cast(1211.0 as
+          decimal(18, 2)), cast(1311.0 as decimal(18, 2)), cast(1411.0 as decimal(18, 2)), cast(1511.0 as
+          decimal(18, 2)), cast(1611.0 as decimal(18, 2)), cast(null as decimal(18, 2))
+        union all
+        select
+          cast(1 as integer), cast('finance_month' as varchar), cast('0.1.0' as varchar), cast('kpark1' as
+          varchar), cast('s1' as varchar), cast(11 as bigint), cast('s1-11' as varchar), cast(13 as integer),
+          cast(3 as integer), cast(1 as integer), cast(2011 as bigint), cast('2026-09-30 23:41:30+00' as
+          timestamptz), cast('2026-09-30 23:35:21+00' as timestamptz), cast('b.jsonl' as varchar), cast(13 as
+          bigint), cast(7 as integer), cast(3 as integer), cast(112.1 as decimal(18, 2)), cast(212.1 as decimal(18,
+          2)), cast(312.1 as decimal(18, 2)), cast(412.1 as decimal(18, 2)), cast(512.1 as decimal(18, 2)),
+          cast(612.1 as decimal(18, 2)), cast(712.1 as decimal(18, 2)), cast(812.1 as decimal(18, 2)), cast(912.1
+          as decimal(18, 2)), cast(1012.1 as decimal(18, 2)), cast(1112.1 as decimal(18, 2)), cast(1212.1 as
+          decimal(18, 2)), cast(1312.1 as decimal(18, 2)), cast(1412.1 as decimal(18, 2)), cast(1512.1 as
+          decimal(18, 2)), cast(1612.1 as decimal(18, 2)), cast(null as decimal(18, 2))
+        union all
+        select
+          cast(1 as integer), cast('finance_month' as varchar), cast('0.1.0' as varchar), cast('kpark1' as
+          varchar), cast('s1' as varchar), cast(12 as bigint), cast('s1-12' as varchar), cast(14 as integer),
+          cast(4 as integer), cast(1 as integer), cast(2012 as bigint), cast('2026-09-30 23:42:30+00' as
+          timestamptz), cast('2026-09-30 23:30:22+00' as timestamptz), cast('b.jsonl' as varchar), cast(14 as
+          bigint), cast(5 as integer), cast(4 as integer), cast(113.2 as decimal(18, 2)), cast(213.2 as decimal(18,
+          2)), cast(313.2 as decimal(18, 2)), cast(413.2 as decimal(18, 2)), cast(513.2 as decimal(18, 2)),
+          cast(613.2 as decimal(18, 2)), cast(713.2 as decimal(18, 2)), cast(813.2 as decimal(18, 2)), cast(913.2
+          as decimal(18, 2)), cast(1013.2 as decimal(18, 2)), cast(1113.2 as decimal(18, 2)), cast(1213.2 as
+          decimal(18, 2)), cast(1313.2 as decimal(18, 2)), cast(1413.2 as decimal(18, 2)), cast(1513.2 as
+          decimal(18, 2)), cast(1613.2 as decimal(18, 2)), cast(null as decimal(18, 2))
+        union all
+        select
+          cast(1 as integer) as schema_version, cast('finance_month' as varchar), cast('0.1.0' as varchar),
+          cast('kpark1' as varchar), cast('s1' as varchar), cast(13 as bigint),
+          cast('s1-13' as varchar), cast(15 as integer), cast(5 as integer),
+          cast(1 as integer), cast(2013 as bigint), cast('2026-09-30 23:10:13+00' as timestamptz),
+          cast('2026-09-30 23:30:13+00' as timestamptz), cast('a.jsonl' as varchar), cast(50 as bigint),
+          cast(8 as integer), cast(5 as integer), cast(113.3 as decimal(18, 2)),
+          cast(213.3 as decimal(18, 2)), cast(313.3 as decimal(18, 2)), cast(413.3 as decimal(18, 2)),
+          cast(513.3 as decimal(18, 2)), cast(613.3 as decimal(18, 2)), cast(713.3 as decimal(18, 2)),
+          cast(813.3 as decimal(18, 2)), cast(913.3 as decimal(18, 2)), cast(1013.3 as decimal(18, 2)),
+          cast(1113.3 as decimal(18, 2)), cast(1213.3 as decimal(18, 2)), cast(1313.3 as decimal(18, 2)),
+          cast(1413.3 as decimal(18, 2)), cast(1513.3 as decimal(18, 2)), cast(1613.3 as decimal(18, 2)), cast(null as decimal(18, 2))
+        union all
+        select
+          cast(1 as integer) as schema_version, cast('finance_month' as varchar), cast('0.1.0' as varchar),
+          cast('kpark1' as varchar), cast('s1' as varchar), cast(14 as bigint),
+          cast('s1-14' as varchar), cast(16 as integer), cast(6 as integer),
+          cast(1 as integer), cast(2014 as bigint), cast('2026-09-30 23:52:14+00' as timestamptz),
+          cast('2026-09-30 23:32:14+00' as timestamptz), cast('a.jsonl' as varchar), cast(10 as bigint),
+          cast(8 as integer), cast(6 as integer), cast(114.4 as decimal(18, 2)),
+          cast(214.4 as decimal(18, 2)), cast(314.4 as decimal(18, 2)), cast(414.4 as decimal(18, 2)),
+          cast(514.4 as decimal(18, 2)), cast(614.4 as decimal(18, 2)), cast(714.4 as decimal(18, 2)),
+          cast(814.4 as decimal(18, 2)), cast(914.4 as decimal(18, 2)), cast(1014.4 as decimal(18, 2)),
+          cast(1114.4 as decimal(18, 2)), cast(1214.4 as decimal(18, 2)), cast(1314.4 as decimal(18, 2)),
+          cast(1414.4 as decimal(18, 2)), cast(1514.5 as decimal(18, 2)), cast(1614.4 as decimal(18, 2)), cast(null as decimal(18, 2))

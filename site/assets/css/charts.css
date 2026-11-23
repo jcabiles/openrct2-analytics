@@ -1,0 +1,43 @@
+/* ===== svg marks and Plot chart classes ===== */
+.chart svg{display:block;width:100%;overflow:visible}
+.axt{font:500 12px var(--font);fill:var(--muted)}
+.axt-b{font:700 12px var(--font);fill:var(--ink)}
+.gridl{stroke:var(--line);stroke-width:1}
+.zero{stroke:var(--ink);stroke-width:1.5}
+.f-p1{fill:var(--p1)}.f-p2{fill:var(--p2)}.f-rep{fill:var(--rep)}.f-hl{fill:var(--hl)}.f-up{fill:var(--up)}.f-down{fill:var(--down)}.f-tot{fill:var(--tot)}.f-ink{fill:var(--ink)}.f-acc{fill:var(--primary)}.f-mute{fill:var(--line-strong)}
+.f-gold{fill:var(--gold)}
+.f-plan{fill:var(--inset);stroke:var(--line-strong);stroke-width:1.5;stroke-dasharray:6 4}
+.ring{fill:none;stroke:var(--gold-ink);stroke-width:2.5}
+.lab{font:700 12px var(--font);fill:var(--ink)}
+.lab-m{font:500 12px var(--font);fill:var(--muted)}
+.conn{stroke:var(--line-strong);stroke-width:1;stroke-dasharray:3 3}
+.ln{fill:none;stroke-width:2.5}
+.ln-1{stroke:var(--ink)}.ln-2{stroke:var(--primary)}.ln-3{stroke:var(--line-strong);stroke-dasharray:5 4}
+.dt{stroke:var(--surface);stroke-width:2}
+.dt-1{fill:var(--ink)}.dt-2{fill:var(--primary)}.dt-3{fill:var(--line-strong)}
+.hit{fill:transparent;cursor:pointer}
+.hit:focus-visible{outline:none;stroke:var(--accent-ink);stroke-width:3}
+.release{font:700 12px var(--font);fill:var(--ink)}
+.mk-now{fill:var(--hl)}
+.mk-later{fill:var(--surface);stroke:var(--line-strong);stroke-width:2;stroke-dasharray:4 3}
+.mk-line{stroke:var(--line-strong);stroke-width:2}
+.ev{font:700 12px var(--font);fill:var(--accent-ink);paint-order:stroke;stroke:var(--surface);stroke-width:4px;stroke-linejoin:round}
+.ev-rule{stroke:var(--accent-ink);stroke-width:1.5;stroke-dasharray:3 3}
+.ev-band{fill:var(--gold-soft)}
+.ln-price{fill:none;stroke:var(--primary);stroke-width:3;stroke-linejoin:round}
+.ln-s{fill:none;stroke-width:2.5;stroke-linejoin:round;stroke-linecap:round}
+.ln-s1{stroke:var(--primary)}.ln-s2{stroke:var(--rev-2)}.ln-s3{stroke:var(--up)}.ln-s4{stroke:var(--p2);stroke-dasharray:7 3}.ln-s5{stroke:var(--line-strong);stroke-dasharray:2 3}
+.med{stroke:var(--muted);stroke-width:1.5;stroke-dasharray:5 4}
+.q-hot{fill:var(--down-soft)}
+.lab-bg{paint-order:stroke;stroke:var(--surface);stroke-width:4px;stroke-linejoin:round}
+.f-rev1{fill:var(--rev-1)} .f-rev2{fill:var(--rev-2)} .f-rev3{fill:var(--rev-3)}
+.f-cost1{fill:var(--cost-1)} .f-cost2{fill:var(--cost-2)} .f-cost3{fill:var(--cost-3);stroke:var(--ink);stroke-width:2}
+.ln-p1,.ln-p2,.ln-op{fill:none;stroke-width:2.5;stroke-linejoin:round;stroke-linecap:round}
+.ln-p1{stroke:var(--p1)} .ln-p2{stroke:var(--p2)} .ln-op{stroke:var(--ink)}
+.dt-p1{fill:var(--p1)} .dt-p2{fill:var(--p2)} .dt-op{fill:var(--surface);stroke:var(--ink);stroke-width:2.5}
+.dt-off{fill-opacity:.18}
+.dt-hl{stroke:var(--accent-ink);stroke-width:4}
+.hit:hover{fill:var(--ink);fill-opacity:.06}
+.b-sel{fill:var(--primary-soft);stroke:var(--accent-ink);stroke-width:1.5}
+.b-on{fill:var(--primary)} .b-off{fill:var(--line-strong);fill-opacity:.45}
+.b-gap{stroke:var(--line-strong);stroke-dasharray:3 3}

@@ -1,0 +1,54 @@
+{%- from "figure.njk" import figure as region -%}
+{%- set rangeFig = "desk-range" | figure(exports) -%}
+{%- set parkFig = "desk-park" | figure(exports) -%}
+{%- set monthCount = rangeFig.rows | length -%}
+{%- set lastMonth = monthCount - 1 -%}
+<section class="sec col" id="insights" aria-labelledby="insights-h" data-spy data-spy-as="story">
+  <div class="sec-head">
+    <p class="no">No. 05, continued</p>
+    <h2 id="insights-h" tabindex="-1">{% passage "the-analytics-strategy.md", "insights-title", "inline" %}</h2>
+    <p class="lead">{% passage "the-analytics-strategy.md", "insights-lead", "inline" %}</p>
+    <div class="play">{{ region("desk-play" | figure(exports), "p", "span") }}</div>
+  </div>
+  <div class="desk" id="desk">
+    <div class="desk-ctl">
+      {% call region(rangeFig, "div") %}
+      <div class="range-h"><span class="ctl-label" id="range-l">{{ rangeFig.label }}</span><output for="rng-a rng-b" data-range-out data-months="{% for row in rangeFig.rows %}{{ row.month | monthLabel }}{{ '|' if not loop.last }}{% endfor %}">{{ rangeFig.rows[0].month | monthLabel }} to {{ rangeFig.rows[lastMonth].month | monthLabel }}</output></div>
+      <div class="brush">
+        <svg class="brush-strip" aria-hidden="true" focusable="false"></svg>
+        <input class="rng" type="range" id="rng-a" data-range="start" min="0" max="{{ lastMonth }}" step="1" value="0" aria-label="{{ rangeFig.startLabel }}">
+        <input class="rng" type="range" id="rng-b" data-range="end" min="0" max="{{ lastMonth }}" step="1" value="{{ lastMonth }}" aria-label="{{ rangeFig.endLabel }}">
+      </div>
+      <div class="brush-yrs" aria-hidden="true">{% for year in rangeFig.presets(rangeFig.rows) %}<span style="left:{{ year.left }}">{{ year.year }}</span>{% endfor %}</div>
+      <div class="presets" role="group" aria-label="Range presets">
+        {%- for year in rangeFig.presets(rangeFig.rows) %}
+        <button class="btn" type="button" data-preset="{{ year.from }},{{ year.to }}" aria-pressed="false">Company year {{ year.year }}</button>
+        {%- endfor %}
+        <button class="btn" type="button" data-preset="0,{{ lastMonth }}" aria-pressed="true">All months</button>
+      </div>
+      {% endcall %}
+      {% call region(parkFig, "div") %}
+      <fieldset><legend>Park</legend><div class="seg">
+        <label><input type="radio" name="park" value="all" checked><span>All parks</span></label>
+        {%- for park in parkFig.rows %}
+        <label><input type="radio" name="park" value="{{ park.park_id }}"><span>Park {{ park.park_number }}{% if not loop.last %}<i class="vh">,</i>{% endif %}</span></label>
+        {%- endfor %}
+      </div></fieldset>
+      {% endcall %}
+    </div>
+    <div class="tabs" role="tablist" aria-label="Departments">
+      <button class="tab" role="tab" type="button" id="tab-fin" data-view="fin" aria-controls="view-fin" aria-selected="true">Finance<small>profit, visits, prices</small></button>
+      <button class="tab" role="tab" type="button" id="tab-ops" data-view="ops" aria-controls="view-ops" aria-selected="false" tabindex="-1">Operations<small>availability, lines, riders</small></button>
+      <button class="tab" role="tab" type="button" id="tab-attr" data-view="attr" aria-controls="view-attr" aria-selected="false" tabindex="-1">Attractions (Product)<small>usage, ratings, age</small></button>
+    </div>
+    <div class="view" role="tabpanel" id="view-fin" aria-labelledby="tab-fin" tabindex="0">
+      {% include "insights-finance.njk" %}
+    </div>
+    <div class="view" role="tabpanel" id="view-ops" aria-labelledby="tab-ops" tabindex="0" hidden>
+      {% include "insights-ops.njk" %}
+    </div>
+    <div class="view" role="tabpanel" id="view-attr" aria-labelledby="tab-attr" tabindex="0" hidden>
+      {% include "insights-attr.njk" %}
+    </div>
+  </div>
+</section>

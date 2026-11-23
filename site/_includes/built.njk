@@ -1,0 +1,137 @@
+{%- from "figure.njk" import figure as region -%}
+{%- set F = "how-this-was-built.md" -%}
+{%- set numsFig = "built-numbers" | figure(exports) -%}
+<section class="sec col" id="built" aria-labelledby="built-h" data-spy>
+  <div class="sec-head">
+    <p class="no">No. 04</p>
+    <h2 id="built-h" tabindex="-1">{% passage F, "built-title", "inline" %}</h2>
+    <p class="lead built-lede">{% passage F, "built-lead", "inline" %}</p>
+  </div>
+
+  <div class="crew-block">
+    <h3>The build crew</h3>
+    <p class="measure">{% passage F, "crew-intro", "inline" %}</p>
+    <p class="measure">{% passage F, "crew-review", "inline" %}</p>
+    <ul class="why" aria-label="Why three vendors">
+      <li><p><b>Cheaper.</b> {% passage F, "why-cheaper", "inline" %}</p></li>
+      <li><p><b>Better.</b> {% passage F, "why-better", "inline" %}</p></li>
+    </ul>
+    <ul class="ckey" aria-label="Diagram key">
+      <li><span class="vsw claude" aria-hidden="true"></span>Claude</li>
+      <li><span class="vsw codex" aria-hidden="true"></span>Codex</li>
+      <li><span class="vsw gemini" aria-hidden="true"></span>Gemini</li>
+      <li><span class="vsw none" aria-hidden="true"></span>No model</li>
+      <li class="ckey-fix"><span class="cr-fix" aria-hidden="true">Fix</span>{% passage F, "key-fix", "inline" %}</li>
+    </ul>
+
+    <div class="crew" id="crew" role="group" aria-label="{% passage F, 'crew-aria', 'text' %}">
+      <div class="crew-top">
+        <div class="cr-node cr-me">
+          <button type="button" class="cr-box" aria-expanded="false" aria-controls="cr-p-me" aria-describedby="cr-p-me" data-pop>
+            <span class="cr-band" aria-hidden="true"><i class="none"></i></span>
+            <span class="cr-role">Me</span>
+            <span class="cr-models"><span class="cr-chip none">No model</span></span>
+            <span class="cr-why">{% passage F, "me-why", "inline" %}</span>
+          </button>
+          <span class="cr-to" aria-hidden="true"></span>
+          <div class="cr-pop" id="cr-p-me" role="tooltip" hidden><p>{% passage F, "me-pop", "inline" %}</p></div>
+        </div>
+        <div class="cr-node cr-dir">
+          <button type="button" class="cr-box" aria-expanded="false" aria-controls="cr-p-dir" aria-describedby="cr-p-dir" data-pop>
+            <span class="cr-band" aria-hidden="true"><i class="claude"></i></span>
+            <span class="cr-role">Director</span>
+            <span class="cr-models"><span class="cr-chip"><i class="claude" aria-hidden="true"></i>Opus 5.5</span></span>
+            <span class="cr-why">{% passage F, "dir-why", "inline" %}</span>
+          </button>
+          <div class="cr-pop" id="cr-p-dir" role="tooltip" hidden><p>{% passage F, "dir-pop", "inline" %}</p></div>
+        </div>
+        <div class="cr-ret"><p>{% passage F, "return-note", "inline" %}</p></div>
+      </div>
+
+      <div class="cr-c cr-fan" aria-hidden="true"><i class="v up x2"></i><i class="h"></i><i class="v dn x1"></i><i class="v dn x2"></i><i class="v dn x3"></i></div>
+
+      <div class="cr-node cr-w1">
+        <button type="button" class="cr-box" aria-expanded="false" aria-controls="cr-p-spec" aria-describedby="cr-p-spec" data-pop>
+          <span class="cr-band" aria-hidden="true"><i class="claude"></i></span>
+          <span class="cr-role">Spec writers</span>
+          <span class="cr-models"><span class="cr-chip"><i class="claude" aria-hidden="true"></i>Opus 5.5</span></span>
+          <span class="cr-why">{% passage F, "spec-why", "inline" %}</span>
+        </button>
+        <div class="cr-pop" id="cr-p-spec" role="tooltip" hidden><p>{% passage F, "spec-pop", "inline" %}</p></div>
+      </div>
+      <div class="cr-node cr-w2">
+        <button type="button" class="cr-box" aria-expanded="false" aria-controls="cr-p-impl" aria-describedby="cr-p-impl" data-pop>
+          <span class="cr-band" aria-hidden="true"><i class="claude"></i></span>
+          <span class="cr-role">Implementers</span>
+          <span class="cr-models"><span class="cr-chip"><i class="claude" aria-hidden="true"></i>Sonnet 5.5</span></span>
+          <span class="cr-why">{% passage F, "impl-why", "inline" %}</span>
+        </button>
+        <div class="cr-pop" id="cr-p-impl" role="tooltip" hidden><p>{% passage F, "impl-pop", "inline" %}</p></div>
+      </div>
+      <div class="cr-node cr-w3 cr-end">
+        <button type="button" class="cr-box" aria-expanded="false" aria-controls="cr-p-small" aria-describedby="cr-p-small" data-pop>
+          <span class="cr-band" aria-hidden="true"><i class="claude"></i><i class="codex"></i><i class="gemini"></i></span>
+          <span class="cr-role">Small-ticket workers</span>
+          <span class="cr-models"><span class="cr-chip"><i class="codex" aria-hidden="true"></i>GPT-6 Luna</span><span class="cr-chip"><i class="gemini" aria-hidden="true"></i>Gemini 3.8 Flash</span><span class="cr-chip"><i class="claude" aria-hidden="true"></i>Haiku 5.5</span></span>
+          <span class="cr-why">{% passage F, "small-why", "inline" %}</span>
+        </button>
+        <div class="cr-pop" id="cr-p-small" role="tooltip" hidden><p>{% passage F, "small-pop", "inline" %}</p></div>
+      </div>
+
+      <div class="cr-c cr-join" aria-hidden="true"><i class="v up x1"></i><i class="v up x2"></i><i class="v up x3"></i><i class="h"></i><i class="v dn x2"></i></div>
+      <div class="cr-ret-mid" aria-hidden="true"></div>
+
+      <div class="cr-node cr-rev">
+        <button type="button" class="cr-box" aria-expanded="false" aria-controls="cr-p-rev" aria-describedby="cr-p-rev" data-pop>
+          <span class="cr-band" aria-hidden="true"><i class="claude"></i><i class="codex"></i></span>
+          <span class="cr-role">Reviewers</span>
+          <span class="cr-models"><span class="cr-chip"><i class="claude" aria-hidden="true"></i>Opus 5.5</span><span class="cr-chip"><i class="codex" aria-hidden="true"></i>GPT-6 Sol</span></span>
+          <span class="cr-why">{% passage F, "rev-why", "inline" %}</span>
+        </button>
+        <div class="cr-pop" id="cr-p-rev" role="tooltip" hidden><p>{% passage F, "rev-pop", "inline" %}</p></div>
+      </div>
+      <div class="cr-ret-low" aria-hidden="true"></div>
+
+      <div class="cr-c cr-drop" aria-hidden="true"><i class="v up x2"></i><i class="h"></i><i class="v dn x1"></i></div>
+
+      <div class="track">
+        <div class="cr-node cr-gate">
+          <button type="button" class="cr-box" aria-expanded="false" aria-controls="cr-p-gate" aria-describedby="cr-p-gate" data-pop>
+            <span class="cr-band" aria-hidden="true"><i class="none"></i></span>
+            <span class="cr-role">Automatic gates</span>
+            <span class="cr-models"><span class="cr-chip none">No model</span></span>
+            <span class="cr-why">{% passage F, "gate-why", "inline" %}</span>
+          </button>
+          <button type="button" class="cr-fix" aria-expanded="false" aria-controls="cr-f-3" aria-describedby="cr-f-3" data-pop>Fix<span class="vh">{% passage F, "fix-aria", "inline" %}</span></button>
+          <div class="cr-pop" id="cr-p-gate" role="tooltip" hidden><p>{% passage F, "gate-pop", "inline" %}</p></div>
+          <div class="cr-pop cr-pop-fix" id="cr-f-3" hidden>
+            <p class="cr-pop-t">{% passage F, "fix-3-title", "inline" %}</p>
+            <p>{% passage F, "fix-3-body", "inline" %}</p>
+            <div class="cr-perf" aria-hidden="true"></div>
+            <p><em>Fix:</em> {% passage F, "fix-3-rule", "inline" %}</p>
+            <p><a href="https://github.com/jcabiles/openrct2-analytics/blob/main/docs/review-catches.md#5-an-assertion-was-loosened-in-place-and-the-script-missed-it" rel="noopener noreferrer">Review record</a></p>
+          </div>
+        </div>
+        <span class="tk-ar" aria-hidden="true"></span>
+        <p class="tk-br tk-dev">Development branch</p>
+        <span class="tk-ar" aria-hidden="true"></span>
+        <p class="tk-me">Me</p>
+        <span class="tk-ar tk-last"><span>{% passage F, "merge-note", "inline" %}</span></span>
+        <p class="tk-br tk-main">Main branch</p>
+      </div>
+    </div>
+    <p class="fine">{% passage F, "models-as-of", "inline" %}</p>
+  </div>
+
+  <div class="nums-block">
+    {% call region(numsFig, "div") -%}
+    <ul class="nums">
+      {%- for row in numsFig.rows %}
+      <li><span class="nn">{{ row.shown }}</span><span class="nl">{{ row.label }}</span></li>
+      {%- endfor %}
+    </ul>
+    {%- endcall %}
+    <p class="fine">{% passage F, "counts-note", "inline" %}</p>
+  </div>
+
+</section>

@@ -1,0 +1,92 @@
+apiVersion: v3.2.0
+kind: DataContract
+id: session_play_mode
+name: session_play_mode
+version: 1.0.0
+status: active
+description:
+  purpose: >-
+    Play-mode label feed: one row per labeled session, saying whether the session was played by the project owner
+    (managed) or by the autopilot helper (autopilot). A session with no row is managed.
+servers:
+  - server: csv_through_duckdb
+    type: duckdb
+    database: __DATABASE__
+    schema: main
+schema:
+  - name: session_play_mode
+    physicalType: view
+    description: >-
+      One row per labeled session. CSV files named session_play_mode_<YYYY-MM-DD>_<NN>.csv (NN 01 to 99) land
+      beside the park registry under registry/v1/. Deliveries are append-only except for a pre-go-live company
+      delete (ADR 0033). The check reads them all through one throwaway DuckDB view that adds five derived columns
+      the rules below read: ready_phrase (the park's ready phrase, owned by play_mode_feed.py), file_name (the file's
+      base name), file_date (the date in the file name), expected_data_set (the data set of the folder, or the row's
+      own data_set when the folder is not a known data set) and row_order (the row's line position, counted across
+      the files read). This contract is its own version line, separate from the plugin's event contracts.
+    properties:
+      - name: session_id
+        logicalType: string
+        physicalType: VARCHAR
+        required: true
+        description: The session's identifier, the same text the plugin sends as session_id; no unit.
+      - name: park_id
+        logicalType: string
+        physicalType: VARCHAR
+        required: true
+        description: The park's identifier, the same text the plugin sends as park_id; no unit.
+      - name: play_mode
+        logicalType: string
+        physicalType: VARCHAR
+        required: true
+        description: Who played the session, managed or autopilot; text.
+      - name: ready_confirmation
+        logicalType: string
+        physicalType: VARCHAR
+        required: false
+        description: >-
+          Empty, or exactly the park's ready phrase; required on a park's first autopilot row. Text.
+      - name: data_set
+        logicalType: string
+        physicalType: VARCHAR
+        required: true
+        description: The data set the row belongs to, rehearsal or company; text.
+      - name: delivered_on
+        logicalType: date
+        physicalType: DATE
+        required: true
+        description: The calendar date the delivery was made, equal to the date in the file name; a date, no time.
+    quality:
+      - type: sql
+        description: play_mode is managed or autopilot
+        query: SELECT COUNT(*) FROM {object} WHERE play_mode NOT IN ('managed', 'autopilot')
+        mustBe: 0
+      - type: sql
+        description: session_id is unique across every delivery
+        query: SELECT COUNT(*) FROM (SELECT session_id FROM {object} GROUP BY session_id HAVING COUNT(*) > 1)
+        mustBe: 0
+      - type: sql
+        description: ready_confirmation is empty or exactly the park's ready phrase
+        query: >-
+          SELECT COUNT(*) FROM {object}
+          WHERE ready_confirmation IS NOT NULL AND ready_confirmation <> ready_phrase
+        mustBe: 0
+      - type: sql
+        description: each park's first autopilot row, in file name then row order, carries the ready phrase
+        query: >-
+          SELECT COUNT(*) FROM (
+            SELECT ready_confirmation, ready_phrase,
+              row_number() OVER (PARTITION BY park_id ORDER BY file_name, row_order) AS nth
+            FROM {object} WHERE play_mode = 'autopilot'
+          ) WHERE nth = 1 AND ready_confirmation IS DISTINCT FROM ready_phrase
+        mustBe: 0
+      - type: sql
+        description: data_set equals the folder's data set and is rehearsal or company
+        query: >-
+          SELECT COUNT(*) FROM {object}
+          WHERE data_set NOT IN ('rehearsal', 'company') OR data_set <> expected_data_set
+        mustBe: 0
+      - type: sql
+        description: delivered_on equals the date in the file name
+        query: SELECT COUNT(*) FROM {object} WHERE delivered_on IS DISTINCT FROM file_date
+        mustBe: 0

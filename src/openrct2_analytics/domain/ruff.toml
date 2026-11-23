@@ -1,0 +1,28 @@
+# Import boundary for pure logic. It applies to every file in this folder,
+# including new ones. `extend` keeps all the root pyproject.toml settings.
+# `banned-api` also catches relative imports such as `from ..config import X`.
+extend = "../../../pyproject.toml"
+# Share the root cache instead of creating a second one in this folder.
+cache-dir = "../../../.ruff_cache"
+
+[lint]
+extend-select = ["TID251"]
+
+[lint.flake8-tidy-imports.banned-api]
+"fastapi".msg = "domain/ is pure logic; do web work in the calling layer."
+"starlette".msg = "domain/ is pure logic; do web work in the calling layer."
+"flask".msg = "domain/ is pure logic; do web work in the calling layer."
+"django".msg = "domain/ is pure logic; do web work in the calling layer."
+"sqlalchemy".msg = "domain/ is pure logic; query in the calling layer and pass results in."
+"sqlite3".msg = "domain/ is pure logic; query in the calling layer and pass results in."
+"psycopg".msg = "domain/ is pure logic; query in the calling layer and pass results in."
+"psycopg2".msg = "domain/ is pure logic; query in the calling layer and pass results in."
+"requests".msg = "domain/ is pure logic; call HTTP in the calling layer and pass results in."
+"httpx".msg = "domain/ is pure logic; call HTTP in the calling layer and pass results in."
+"aiohttp".msg = "domain/ is pure logic; call HTTP in the calling layer and pass results in."
+"urllib.request".msg = "domain/ is pure logic; call HTTP in the calling layer and pass results in."
+"http.client".msg = "domain/ is pure logic; call HTTP in the calling layer and pass results in."
+"socket".msg = "domain/ is pure logic; do network I/O in the calling layer and pass results in."
+"os.environ".msg = "domain/ is pure logic; pass config values in as arguments."
+"os.getenv".msg = "domain/ is pure logic; pass config values in as arguments."
+"openrct2_analytics.config".msg = "domain/ is pure logic; pass config values in as arguments."

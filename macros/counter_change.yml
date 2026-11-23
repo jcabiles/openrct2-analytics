@@ -1,0 +1,19 @@
+version: 2
+
+macros:
+  - name: counter_change
+    description: >
+      Computes the next kept reading minus this one, within one session. The
+      caller filters to kept rows first. The change is dated by the earlier
+      reading, whose clock is the game day. The last kept reading of a session
+      gets null, not zero. Unit: the counter's own unit; clock: the earlier
+      reading's game day. The caller's rows must expose `session_id` and `seq`.
+    arguments:
+      - name: counter
+        type: string
+        description: A column name or SQL expression, as text.
+      - name: entity_columns
+        type: list[string]
+        description: >
+          Column names that also bound the partition, for example
+          `['ride_id']`; defaults to none.

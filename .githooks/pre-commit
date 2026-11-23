@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# Fast checks on every commit, reviewed or not. `make setup` activates this
+# hook with `git config core.hooksPath .githooks`; `make check` is the full gate.
+# Linters run on the staged snapshot, so they judge exactly what this commit
+# will contain: unstaged or untracked work in progress never blocks it.
+set -euo pipefail
+
+root="$(git rev-parse --show-toplevel)"
+cd "$root"
+
+py_dir="."
+ruff="$root/$py_dir/.venv/bin/ruff"
+[ -x "$ruff" ] || { echo "pre-commit: $ruff is missing; run make setup" >&2; exit 1; }
+
+# Trailing whitespace and leftover conflict markers in the staged changes.
+git diff --cached --check
+
+# Ported from pre-commit-hooks' detect-private-key. `--cached` searches the
+# index. The `[2]` keeps this line from matching its own text.
+key_pattern='BEGIN (RSA |DSA |EC |OPENSSH |SSH2 ENCRYPTED |PGP |ENCRYPTED )?PRIVATE KEY|PuTTY-User-Key-File-[2]'
+if git grep --cached -lE "$key_pattern"; then
+  echo "pre-commit: private key found in the file(s) above; remove it before committing." >&2
+  exit 1
+fi
+
+# An explicit template makes macOS mktemp honor TMPDIR, as GNU mktemp does.
+snapshot="$(mktemp -d "${TMPDIR:-/tmp}/pre-commit.XXXXXX")"
+trap 'rm -rf "$snapshot"' EXIT
+git checkout-index -a --prefix="$snapshot/"
+
+(cd "$snapshot/$py_dir" && "$ruff" format --no-cache --check . && "$ruff" check --no-cache .)
+# The staged copy of the size check measures the snapshot it sits in.
+"$root/$py_dir/.venv/bin/python" "$snapshot/scripts/check_file_sizes.py"
+
+# Secret scan on the staged snapshot, against the staged baseline. `find`
+# lists every staged file, mirroring the size check's use of the snapshot.
+# detect-secrets-hook diffs the baseline file against git history to see
+# whether it was just edited, so the snapshot needs its own throwaway repo;
+# without one it fails outside any git work tree. Git exports GIT_INDEX_FILE
+# to hooks (an absolute path for `git commit <paths>`), so it is unset first;
+# otherwise `git add -A` would write into the real commit's index.
+detect_secrets_hook="$root/$py_dir/.venv/bin/detect-secrets-hook"
+(cd "$snapshot" && unset GIT_INDEX_FILE GIT_DIR GIT_WORK_TREE GIT_PREFIX && \
+  git init -q && git add -A && \
+  "$detect_secrets_hook" --baseline .secrets.baseline $(find . -type f -not -path './.git/*' | sed 's|^\./||'))

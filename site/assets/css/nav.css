@@ -1,0 +1,36 @@
+/* ===== section bar: slides in after the hero coupons; an event dot rides the bar's rule to the current link ===== */
+.topbar{position:fixed;z-index:40;top:0;left:0;right:0;height:var(--bar-h);background:var(--surface);border-bottom:2px solid var(--line);box-shadow:var(--shadow-1);transform:translateY(-100%);visibility:hidden;transition:transform var(--t-panel) var(--ease-out), visibility 0s linear var(--t-panel)}
+.topbar[data-shown="true"]{transform:none;visibility:visible;transition:transform var(--t-panel) var(--ease-out), visibility 0s}
+.topbar-in{position:relative;height:100%;max-width:1120px;margin-inline:auto;padding-inline:clamp(16px, 4vw, 48px);display:flex;align-items:center;gap:var(--s3)}
+.tb-mark{display:inline-flex;align-items:center;min-height:44px;margin-right:auto;font:600 1.125rem/1 var(--font-d);letter-spacing:-.01em;color:var(--ink);text-decoration:none;white-space:nowrap}
+.tb-mark span{color:var(--accent-ink)}
+.tb-sheet{display:contents}
+.tb-links{display:flex;align-items:center;gap:2px}
+.tb-links a{display:inline-flex;align-items:center;gap:var(--s1);min-height:44px;padding:0 var(--s3);border-radius:var(--r2);color:var(--muted);font-size:var(--fs-0);font-weight:700;text-decoration:none;white-space:nowrap;transition:color var(--t-snap) var(--ease-out), background-color var(--t-snap) var(--ease-out)}
+.tb-links .tb-ext{display:inline-flex;align-items:center;gap:var(--s1);min-height:44px;padding:0 var(--s3);border-radius:var(--r2);color:var(--muted);font-size:var(--fs-0);font-weight:700;white-space:nowrap;cursor:default;transition:color var(--t-snap) var(--ease-out), background-color var(--t-snap)}
+.tb-links .tb-ext:hover{color:var(--ink);background:var(--surface-2)}
+.tb-links a:hover{color:var(--ink);background:var(--surface-2)}
+.tb-links a:active{background:var(--primary-soft)}
+.tb-links a[aria-current]{color:var(--ink)}
+.tb-dot{position:absolute;left:0;bottom:-7px;width:12px;height:12px;margin-left:-6px;border-radius:50%;background:var(--sc-dot);border:2px solid var(--sc-dot-edge);opacity:0;pointer-events:none;transition:transform var(--t-morph) var(--ease-out), opacity var(--t-snap) var(--ease-out)}
+.tb-now,.tb-btn{display:none}
+@media (max-width:1099px){
+  .tb-mark{margin-right:0;font-size:1rem}
+  .tb-now{display:flex;align-items:center;gap:var(--s2);flex:1 1 auto;min-width:0;margin:0;font-size:var(--fs-0);font-weight:700;white-space:nowrap}
+  .tb-now span{overflow:hidden;text-overflow:ellipsis}
+  .tb-now::before{content:"";flex:none;width:10px;height:10px;border-radius:50%;background:var(--sc-dot);border:1.5px solid var(--sc-dot-edge)}
+  .tb-btn{display:inline-flex;align-items:center;gap:var(--s2);flex:none;min-height:44px;padding:0 var(--s4);border-radius:999px;border:1px solid var(--line-strong);background:var(--surface);color:var(--ink);font:700 var(--fs-0)/1 var(--font);cursor:pointer;transition:background-color var(--t-snap) var(--ease-out), color var(--t-snap) var(--ease-out)}
+  .tb-btn:hover{border-color:var(--ink)}
+  .tb-btn[aria-expanded="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+  .tb-btn .chev{width:8px;height:8px;border:solid currentColor;border-width:0 2px 2px 0;transform:translateY(-2px) rotate(45deg);transition:transform var(--t-snap) var(--ease-out)}
+  .tb-btn[aria-expanded="true"] .chev{transform:translateY(2px) rotate(-135deg)}
+  .tb-dot{display:none}
+  .tb-sheet{display:none;position:absolute;top:calc(100% + 2px);left:0;right:0;max-height:calc(100vh - var(--bar-h));overflow-y:auto;background:var(--surface);border-bottom:1px solid var(--line-strong);box-shadow:var(--shadow-1);padding:var(--s2) clamp(16px, 4vw, 48px) var(--s4)}
+  .topbar[data-open="true"] .tb-sheet{display:block}
+  .tb-links{flex-direction:column;align-items:stretch;gap:0;max-width:32rem}
+  .tb-links a{display:flex;min-height:48px;padding:0 var(--s3);font-size:var(--fs-1);color:var(--ink);border-radius:0;border-bottom:1px solid var(--line)}
+  .tb-links .tb-ext{display:flex;min-height:48px;padding:0 var(--s3);font-size:var(--fs-1);color:var(--ink);border-radius:0;border-bottom:1px solid var(--line)}
+  .tb-links a[aria-current]{background:var(--primary-soft);box-shadow:inset 4px 0 0 var(--accent-ink)}
+}
+@media (max-width:519px){.tb-mark{display:none}}
+@media (prefers-reduced-motion: reduce){.topbar,.topbar[data-shown="true"],.tb-dot{transition:none}}

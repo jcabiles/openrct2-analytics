@@ -1,0 +1,26 @@
+# Committed on purpose: a stranger clones and runs with zero setup.
+# Local file-backed DuckDB; no credentials exist to leak. Paths are relative to
+# the repo root, so this file has no private machine path.
+# dev is the default, so a hand-typed dbt command never builds the CI file or a
+# candidate. ci needs OPENRCT2_CI_DIR; rehearsal and company need
+# OPENRCT2_PUBLISH_RUN_ID, and a value other than letters, digits and dashes
+# sends the build to a folder that never exists. No output names a published file.
+openrct2_analytics:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: warehouse/dev/dev.duckdb
+      threads: 4
+    ci:
+      type: duckdb
+      path: "{{ env_var('OPENRCT2_CI_DIR') }}/ci.duckdb"
+      threads: 4
+    rehearsal:
+      type: duckdb
+      path: "{{ 'warehouse/candidate/run-' ~ env_var('OPENRCT2_PUBLISH_RUN_ID') ~ '/rehearsal.duckdb' if modules.re.fullmatch('[A-Za-z0-9-]{1,64}', env_var('OPENRCT2_PUBLISH_RUN_ID')) else 'invalid-run-id/rehearsal.duckdb' }}"
+      threads: 4
+    company:
+      type: duckdb
+      path: "{{ 'warehouse/candidate/run-' ~ env_var('OPENRCT2_PUBLISH_RUN_ID') ~ '/company.duckdb' if modules.re.fullmatch('[A-Za-z0-9-]{1,64}', env_var('OPENRCT2_PUBLISH_RUN_ID')) else 'invalid-run-id/company.duckdb' }}"
+      threads: 4

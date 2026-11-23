@@ -1,0 +1,60 @@
+{%- set onceEvents = ["session_start", "save_written"] -%}
+{%- set dayEvents = ["park_snapshot", "ride_snapshot", "guest_snapshot", "plugin_stats"] -%}
+{%- set monthEvents = ["finance_month"] -%}
+{%- set liveEvents = ["guest_arrived", "guest_boarded", "guest_refused", "guest_left", "weather_change", "game_action"] -%}
+{%- set meters = [
+  { id: "worst", value: "5.26", max: "12", limit: "10 ms", mark: "83.33" },
+  { id: "mean", value: "0.1491", max: "1.5", limit: "1.25 ms", mark: "83.33" }
+] -%}
+{%- macro events(names) -%}
+<ul>{% for name in names %}<li><code>{{ name }}</code></li>{% endfor %}</ul>
+{%- endmacro -%}
+<section class="sec col" id="extract" aria-labelledby="extract-h" data-spy>
+  <div class="sec-head">
+    <p class="no">No. 02</p>
+    <h2 id="extract-h" tabindex="-1">{% passage "the-stack.md", "ex-h", "inline" %}</h2>
+    <p class="lead">{% passage "the-stack.md", "ex-lead", "inline" %}</p>
+  </div>
+  <div class="ex-grid">
+    <div>
+      <h3>Event types</h3>
+      <div class="evgroups">
+        <div><h4>{% passage "the-stack.md", "ex-group-once", "inline" %}</h4>{{ events(onceEvents) }}</div>
+        <div><h4>Every game day</h4>{{ events(dayEvents) }}</div>
+        <div><h4>Every month</h4>{{ events(monthEvents) }}</div>
+        <div><h4>As it happens</h4>{{ events(liveEvents) }}</div>
+      </div>
+      <div class="audit">
+        <h3>{% passage "the-stack.md", "ex-audit-h", "inline" %}</h3>
+        <p class="measure" style="margin-top:var(--s2)">{% passage "the-stack.md", "ex-audit", "inline" %}</p>
+        <div class="serials" id="serials" role="list" aria-label="{% passage "the-stack.md", "ex-serials-label", "text" %}"></div>
+        <div class="audit-actions">
+          <button class="btn" type="button" id="pull">Remove one event</button>
+          <button class="btn" type="button" id="dup">Duplicate one event</button>
+          <button class="btn btn-p" type="button" id="reroll" disabled>Reset the sequence</button>
+        </div>
+        <div class="verdict" id="verdict" aria-live="polite" tabindex="-1">
+          {%- for key in ["pass", "gap", "dup", "both"] %}
+          <div data-verdict="{{ key }}"{% if key != "pass" %} hidden{% endif %}><b>{% passage "the-stack.md", "verdict-" + key + "-h", "inline" %}</b><p>{% passage "the-stack.md", ("verdict-pass" if key == "pass" else "verdict-fail"), "inline" %}</p></div>
+          {%- endfor %}
+        </div>
+      </div>
+    </div>
+    <div>
+      <h3>{% passage "the-stack.md", "ex-budget-h", "inline" %}</h3>
+      <p class="measure" style="margin-top:var(--s2)">{% passage "the-stack.md", "ex-budget", "inline" %}</p>
+      <div class="meters">
+        {%- for m in meters %}
+        <div class="meter" role="img" aria-label="{% passage "the-stack.md", "meter-" + m.id + "-label", "text" %} Benchmark date: 13 October 2026.">
+          <h4>{% passage "the-stack.md", "meter-" + m.id + "-title", "inline" %} <span>{% passage "the-stack.md", "meter-" + m.id, "inline" %}</span></h4>
+          <div class="meter-track"><div class="meter-fill" data-meter="{{ m.value }}" data-max="{{ m.max }}"></div><div class="meter-lim" style="left:{{ m.mark }}%"><span>{{ "limit" if m.id == "worst" else "budget" }} {{ m.limit }}</span></div></div>
+          <div class="meter-scale" aria-hidden="true"><span>0 ms</span> <span>{{ m.max }} ms</span></div>
+        </div>
+        {%- endfor %}
+      </div>
+      <p class="fine" style="margin-top:var(--s4)">{% passage "the-stack.md", "ex-bench", "inline" %}</p>
+      <p class="wry" style="margin-top:var(--s4)">{% passage "the-stack.md", "ex-first-design", "inline" %}</p>
+      <p class="fine" style="margin-top:var(--s2)">{% passage "the-stack.md", "ex-first-design-evidence", "inline" %}</p>
+    </div>
+  </div>
+</section>

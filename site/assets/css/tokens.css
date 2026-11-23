@@ -1,0 +1,49 @@
+/* ===== tokens: every colour on the page lives in this file ===== */
+/* A palette swap also edits site/assets/favicon.svg: an icon file cannot use var(), so its fill is a literal. */
+/* The palette block below sets the colours, so <html> keeps data-palette="rct-exact" and data-theme="light". */
+:root{
+  /* colours the palette block does not derive: status, model vendors, the park scene's fixed inks */
+  --up:#1E7658; --down:#A63D2C; --down-soft:#F9E3DE;
+  /* model vendors in the build crew diagram: brand colours, used only as bands and dots, never behind text */
+  --v-claude:#D97757; --v-codex:#10A37F; --v-gemini:#4285F4;
+  /* the hero park, printed as a two-ink engraving on the ticket stock */
+  --sc-paper:var(--surface-2); --sc-turf:#9AA584; --sc-tree:#6E7B5C; --sc-on-soil:#FFF6F0; --sc-shaft:var(--gold);
+  --sc-bldg:var(--surface); --sc-ink:var(--ink); --sc-roof:var(--p1); --sc-timber:var(--line-strong);
+  --sc-awn-b:var(--gold); --sc-guest-1:var(--ink); --sc-dot:var(--gold); --sc-dot-stroke:2.5px;
+  --shadow-1:0 1px 2px rgba(74,20,32,.08), 0 2px 6px rgba(74,20,32,.06);
+  --shadow-2:0 2px 4px rgba(74,20,32,.08), 0 12px 32px rgba(74,20,32,.12);
+  --hole-shadow:inset 0 1px 3px rgba(20,4,8,.45);
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:24px; --s6:32px; --s7:48px; --s8:64px; --s9:96px;
+  --r1:4px; --r2:8px; --r3:14px;
+  --font:system-ui, sans-serif; --font-d:Georgia, serif; --mono:ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --fs-0:.875rem; --fs-1:1rem; --fs-2:1.25rem; --fs-3:clamp(1.5rem, 1.25rem + .9vw, 1.875rem);
+  --fs-4:clamp(2rem, 1.5rem + 2vw, 3rem); --fs-5:clamp(2.5rem, 1.6rem + 3.4vw, 4.5rem);
+  --t-snap:120ms; --t-lamp:240ms; --t-panel:260ms; --ease-out:cubic-bezier(.2,.7,.2,1); --ease-in:cubic-bezier(.5,0,.8,.3);
+  --bar-h:56px; --t-morph:900ms;
+  color-scheme:light;
+}
+/* seed colours: primary, accent, blue, card stock, ink */
+:root[data-palette="rct-exact"][data-theme="light"]{--P:#C4161C;--A:#F7C21B;--X:#3E8EDE;--N:#E8B23A;--I:#3B2412}
+:root[data-palette][data-theme="light"]{
+  --bg:color-mix(in oklab,var(--N) 10%,#fff); --surface:color-mix(in oklab,var(--N) 3%,#fff);
+  --surface-2:color-mix(in oklab,var(--N) 6%,#fff); --inset:color-mix(in oklab,var(--N) 15%,#fff);
+  --line:color-mix(in oklab,var(--N) 26%,#fff); --line-strong:color-mix(in oklab,var(--I) 55%,var(--N));
+  --ink:var(--I); --muted:color-mix(in oklab,var(--I) 78%,#fff);
+  --primary:var(--P); --on-primary:color-mix(in oklab,var(--N) 4%,#fff); --primary-soft:color-mix(in oklab,var(--P) 15%,#fff); --accent-ink:var(--P);
+  --gold:var(--A); --gold-ink:color-mix(in oklab,var(--A) 55%,#000); --gold-soft:color-mix(in oklab,var(--A) 25%,#fff); --on-gold:var(--I);
+  --p1:color-mix(in oklab,var(--A) 62%,#000); --p2:var(--X); --rep:color-mix(in oklab,var(--A) 75%,#000); --hl:var(--P); --tot:var(--I);
+  --rev-1:var(--P); --rev-2:color-mix(in oklab,var(--A) 78%,#000); --rev-3:var(--X);
+  --cost-1:color-mix(in oklab,var(--I) 80%,var(--N)); --cost-2:color-mix(in oklab,var(--I) 50%,#fff); --cost-3:color-mix(in oklab,var(--I) 25%,#fff);
+  --stub:var(--P); --on-stub:var(--on-primary); --stub-muted:color-mix(in oklab,var(--P) 25%,#fff);
+  --board:color-mix(in oklab,var(--I) 85%,#000); --board-2:color-mix(in oklab,var(--I) 90%,#fff); --board-ink:color-mix(in oklab,var(--N) 6%,#fff);
+  --board-muted:color-mix(in oklab,var(--N) 30%,#fff); --board-groove:color-mix(in oklab,var(--I) 80%,#fff);
+  --guilloche:color-mix(in oklab,var(--N) 18%,#fff);
+  --sc-ray:color-mix(in oklab,var(--N) 12%,#fff); --sc-hill:color-mix(in oklab,var(--N) 20%,#fff);
+  --sc-soil:var(--P); --sc-soil-line:color-mix(in oklab,var(--P) 85%,#fff); --sc-track:var(--X);
+  --sc-water:color-mix(in oklab,var(--X) 70%,#fff); --sc-water-hi:color-mix(in oklab,var(--X) 20%,#fff);
+  --sc-awn-a:var(--P); --sc-guest-2:var(--P); --sc-guest-3:var(--p1); --sc-dot-edge:var(--gold-ink); --sc-path:color-mix(in oklab,var(--N) 4%,#fff);
+  /* the tint behind the dbt block on the infrastructure track */
+  --encl-bg:color-mix(in srgb, var(--gold-soft) 55%, transparent);
+}
+:root[data-palette="rct-exact"][data-theme="light"]{--stub-muted:#FCDDD5;--rev-1:#245C87}
+/* ===== end tokens ===== */

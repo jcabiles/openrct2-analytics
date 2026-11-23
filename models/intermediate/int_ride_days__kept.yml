@@ -1,0 +1,365 @@
+version: 2
+
+models:
+  - name: int_ride_days__kept
+    description: >-
+      Answers how each ride, stall and facility was read and how its guest and
+      profit counters rose on each kept game day, so abandoned save history does
+      not count. Grain: one row per ride occupancy per game day on the kept
+      timeline; key ride_day_key, ride_key joined with game_year, game_month and
+      game_day. An occupancy is one stretch of a ride slot; a new one starts on
+      the slot's first reading, on a change of build month, ride type, ride
+      object or classification, or on a fall in total_customers. ride_key joins
+      park_id, ride_id, the build month and the occupancy's first tick. The
+      snapshot columns come from the occupancy's last kept reading of the day
+      (greatest tick, then latest session start, then session_id, then seq); the
+      two counter changes are each reading's rise to the next kept reading of the
+      same session and occupancy, summed over the day's kept readings, so no rise
+      is lost when a same-day reading is dropped. Known limits: a replacement
+      with the same type, object, classification and build month whose
+      total_customers is at or above its predecessor's last reading shares the
+      predecessor's key; two occupancies of one slot first seen at a tick two
+      kept sessions share, with one build month, share a ride_key and fail the
+      unique test on ride_day_key. Unit: none for the model as a whole; clock:
+      company date (day) for readings and company date for company_date. On
+      the zero-row build the model is empty because there are no ride
+      snapshots.
+    meta:
+      expected_min_rows: 1
+    data_tests:
+      - rows_on_sample:
+          arguments:
+            expected: 3045
+    columns:
+      - name: ride_day_key
+        description: "Ride key and game date joined by pipes; text, no unit; clock: game day."
+        data_tests:
+          - unique:
+              config:
+                severity: error
+          - not_null
+      - name: ride_key
+        description: "Park, ride slot, build month and first tick of the occupancy joined by pipes; text, no unit; clock: game."
+        data_tests: [not_null]
+      - name: park_day_key
+        description: "Park identifier and game date joined by pipes, the key of the park-day; text, no unit; clock: game day."
+        data_tests: [not_null]
+      - name: park_id
+        description: "Stable identifier for the park save; text, no unit; no clock."
+        data_tests: [not_null]
+      - name: ride_id
+        description: "Ride slot number within the park, which the game can reuse; unit: slot number; no clock."
+        data_tests: [not_null]
+      - name: session_id
+        description: "Plugin start identifier of the day's chosen reading, new on every start; text, no unit; clock: session."
+        data_tests: [not_null]
+      - name: seq
+        description: "Order of the chosen reading within its session across event types; unit: count; clock: session order."
+        data_tests: [not_null]
+      - name: event_id
+        description: "Unique identifier for the source ride snapshot of the chosen reading; text, no unit; clock: event."
+        data_tests:
+          - not_null
+          - unique
+      - name: game_year
+        description: "In-game year; unit: year; clock: game calendar."
+        data_tests: [not_null]
+      - name: game_month
+        description: "In-game month numbered 0 to 7; unit: month; clock: game calendar."
+        data_tests: [not_null]
+      - name: game_day
+        description: "In-game day of the month; unit: day; clock: game calendar."
+        data_tests: [not_null]
+      - name: game_ticks_elapsed
+        description: "Game ticks elapsed since the park began, at the chosen reading; unit: game tick; clock: game."
+        data_tests: [not_null]
+      - name: first_seen_ticks
+        description: "Least game ticks elapsed over the occupancy's kept readings; unit: game tick; clock: game."
+        data_tests: [not_null]
+      - name: company_year
+        description: "Mapped company year for this game day; unit: year; clock: company date."
+        data_tests: [not_null]
+      - name: company_date
+        description: "Company calendar date for the game day; unit: date; clock: company date."
+        data_tests: [not_null]
+      - name: ride_name
+        description: "Name the player gave the attraction, at the chosen reading; text, no unit; clock: company date (day)."
+      - name: classification
+        description: "Whether the attraction is a ride, a stall or a facility; text, no unit; clock: company date (day)."
+      - name: ride_type
+        description: "The game's ride type code; unit: code; clock: company date (day)."
+      - name: ride_object
+        description: "The game's object identifier for the attraction; text, no unit; clock: company date (day)."
+      - name: build_date_months_elapsed
+        description: "Months from the park's start to the attraction's build date; unit: month; clock: game."
+      - name: status
+        description: "Operating status named by the game; text, no unit; clock: company date (day), at the chosen reading."
+      - name: is_open_day
+        description: "True when status is open at the chosen reading; boolean, no unit; clock: company date (day)."
+      - name: ride_age_months
+        description: "Age of the attraction at the chosen reading; unit: month; clock: company date (day)."
+      - name: excitement_hundredths
+        description: "Excitement rating in hundredths of a rating point; unit: hundredths of a rating point; clock: company date (day)."
+      - name: intensity_hundredths
+        description: "Intensity rating in hundredths of a rating point; unit: hundredths of a rating point; clock: company date (day)."
+      - name: nausea_hundredths
+        description: "Nausea rating in hundredths of a rating point; unit: hundredths of a rating point; clock: company date (day)."
+      - name: price_1_usd
+        description: "Listed first price when read, not the amount charged; unit: US dollar; clock: company date (day)."
+      - name: price_2_usd
+        description: "Listed second price when read, not the amount charged; unit: US dollar; clock: company date (day)."
+      - name: ride_price_listed_usd
+        description: "Listed price of a ride, equal to price_1_usd when classification is ride and null otherwise; unit: US dollar; clock: company date (day)."
+      - name: shop_item
+        description: "The game's code for the first item a stall or facility sells; unit: item code; clock: company date (day)."
+      - name: shop_item_secondary
+        description: "The game's code for the second item a stall or facility sells; unit: item code; clock: company date (day)."
+      - name: total_customers
+        description: "Lifetime guests served at the chosen reading, which a reload can rewind; unit: count of guests; clock: company date (day)."
+      - name: customers_increase
+        description: "Rise in the game's guest counter from each of this game day's kept readings to the next kept reading of the same session and occupancy, summed over the day; null when no kept reading of the day has a later one (always on a session's last reading). On a ride row it counts guests leaving the ride plus on-ride photos sold; on a stall row it counts purchases; unit: guests; clock: company date (day), assigned to the game day of the earlier reading."
+      - name: total_profit_usd
+        description: "Lifetime profit at the chosen reading; unit: US dollar; clock: company date (day)."
+      - name: profit_usd
+        description: "Sum, over this occupancy's kept readings on this game day, of each reading's rise in total_profit_usd to the next kept reading of the same session and occupancy, which may be negative; null only when every such rise is null; unit: US dollar; clock: company date (day), assigned to the game day of the earlier reading."
+
+      - name: availability_from_downtime_pct
+        description: "100 minus the game's downtime reading at the day's last kept reading; the game computes downtime over its own window, which the repo does not record, so this is not a share measured over this game day; time the ride stood closed may not count as downtime, so a ride closed all day can read 100; null for stalls and facilities and when the reading is null; unit: percent; clock: company date (day), the day's last kept reading."
+      - name: longest_queue_seen_minutes
+        description: "Longest queue seen at the day's kept readings, the largest queue time among the used stations; a longer queue between readings is not seen; null when every reading of the day is null (no station in use) and for stalls and facilities; unit: minutes as the game reports them; clock: company date (day)."
+      - name: guest_rating_pct
+        description: "The game's guest satisfaction rating at the day's last kept reading, not the excitement, intensity or nausea ratings; null when not yet measured and for stalls and facilities; unit: percent, 0 to 100; clock: company date (day), the day's last kept reading."
+
+unit_tests:
+  - name: int_ride_days__kept_u1_occupancy_rule
+    description: >-
+      It proves that a new ride key starts on a fall in customers, a change of
+      ride object, a change of build month or a change of classification alone,
+      that an identical replacement keeps its key, that parks never share a key
+      even when another park reads the same slot between two readings, and that
+      at a tick two kept sessions share the earlier-started session's reading
+      comes first.
+    model: int_ride_days__kept
+    given:
+      - input: ref('stg_ride_snapshot')
+        format: sql
+        rows: |
+          select cast('p1' as varchar) as park_id, cast('sA' as varchar) as session_id, cast(1 as bigint) as seq, cast('sA-p1-1' as varchar) as event_id, cast(9 as integer) as game_year, cast(0 as integer) as game_month, cast(1 as integer) as game_day, cast(100 as bigint) as game_ticks_elapsed, cast(1 as integer) as ride_id, cast('Ride 1' as varchar) as ride_name, cast('ride' as varchar) as classification, cast(21 as integer) as ride_type, cast('rct2.ride.burgb' as varchar) as ride_object, cast(40 as integer) as build_date_months_elapsed, cast('open' as varchar) as status, cast(51 as integer) as age_months, cast(101 as integer) as excitement_hundredths, cast(201 as integer) as intensity_hundredths, cast(301 as integer) as nausea_hundredths, cast(1.01 as decimal(18,2)) as price_1_usd, cast(2.01 as decimal(18,2)) as price_2_usd, cast(null as integer) as shop_item, cast(null as integer) as shop_item_secondary, cast(0 as bigint) as total_customers, cast(0.00 as decimal(18,2)) as total_profit_usd, cast(null as integer) as downtime_pct, cast(null as integer) as satisfaction_pct, cast(null as integer) as queue_time_max_minutes
+          union all
+          select cast('p1' as varchar), cast('sA' as varchar), cast(2 as bigint), cast('sA-p1-2' as varchar), cast(9 as integer), cast(0 as integer), cast(2 as integer), cast(200 as bigint), cast(1 as integer), cast('Ride 1' as varchar), cast('ride' as varchar), cast(21 as integer), cast('rct2.ride.burgb' as varchar), cast(40 as integer), cast('open' as varchar), cast(52 as integer), cast(102 as integer), cast(202 as integer), cast(302 as integer), cast(1.02 as decimal(18,2)), cast(2.02 as decimal(18,2)), cast(null as integer), cast(null as integer), cast(10 as bigint), cast(0.00 as decimal(18,2)), cast(null as integer), cast(null as integer), cast(null as integer)
+          union all
+          select cast('p1' as varchar), cast('sA' as varchar), cast(3 as bigint), cast('sA-p1-3' as varchar), cast(9 as integer), cast(0 as integer), cast(3 as integer), cast(300 as bigint), cast(1 as integer), cast('Ride 1' as varchar), cast('ride' as varchar), cast(21 as integer), cast('rct2.ride.burgb' as varchar), cast(40 as integer), cast('open' as varchar), cast(53 as integer), cast(103 as integer), cast(203 as integer), cast(303 as integer), cast(1.03 as decimal(18,2)), cast(2.03 as decimal(18,2)), cast(null as integer), cast(null as integer), cast(25 as bigint), cast(0.00 as decimal(18,2)), cast(null as integer), cast(null as integer), cast(null as integer)
+          union all
+          select cast('p1' as varchar), cast('sA' as varchar), cast(4 as bigint), cast('sA-p1-4' as varchar), cast(9 as integer), cast(0 as integer), cast(4 as integer), cast(400 as bigint), cast(1 as integer), cast('Ride 1' as varchar), cast('ride' as varchar), cast(21 as integer), cast('rct2.ride.burgb' as varchar), cast(40 as integer), cast('open' as varchar), cast(54 as integer), cast(104 as integer), cast(204 as integer), cast(304 as integer), cast(1.04 as decimal(18,2)), cast(2.04 as decimal(18,2)), cast(null as integer), cast(null as integer), cast(0 as bigint), cast(0.00 as decimal(18,2)), cast(null as integer), cast(null as integer), cast(null as integer)
+          union all
+          select cast('p1' as varchar), cast('sA' as varchar), cast(5 as bigint), cast('sA-p1-5' as varchar), cast(9 as integer), cast(0 as integer), cast(1 as integer), cast(500 as bigint), cast(2 as integer), cast('Ride 2' as varchar), cast('ride' as varchar), cast(22 as integer), cast('rct2.ride.burgb' as varchar), cast(40 as integer), cast('open' as varchar), cast(55 as integer), cast(105 as integer), cast(205 as integer), cast(305 as integer), cast(1.05 as decimal(18,2)), cast(2.05 as decimal(18,2)), cast(null as integer), cast(null as integer), cast(0 as bigint), cast(0.00 as decimal(18,2)), cast(null as integer), cast(null as integer), cast(null as integer)
+          union all
+          select cast('p1' as varchar), cast('sA' as varchar), cast(6 as bigint), cast('sA-p1-6' as varchar), cast(9 as integer), cast(0 as integer), cast(2 as integer), cast(600 as bigint), cast(2 as integer), cast('Ride 2' as varchar), cast('ride' as varchar), cast(22 as integer), cast('rct2.ride.burgb' as varchar), cast(40 as integer), cast('open' as varchar), cast(56 as integer), cast(106 as integer), cast(206 as integer), cast(306 as integer), cast(1.06 as decimal(18,2)), cast(2.06 as decimal(18,2)), cast(null as integer), cast(null as integer), cast(10 as bigint), cast(0.00 as decimal(18,2)), cast(null as integer), cast(null as integer), cast(null as integer)
+          union all
+          select cast('p1' as varchar), cast('sA' as varchar), cast(7 as bigint), cast('sA-p1-7' as varchar), cast(9 as integer), cast(0 as integer), cast(3 as integer), cast(700 as bigint), cast(2 as integer), cast('Ride 2' as varchar), cast('ride' as varchar), cast(22 as integer), cast('rct2.ride.burgb' as varchar), cast(40 as integer), cast('open' as varchar), cast(57 as integer), cast(107 as integer), cast(207 as integer), cast(307 as integer), cast(1.07 as decimal(18,2)), cast(2.07 as decimal(18,2)), cast(null as integer), cast(null as integer), cast(25 as bigint), cast(0.00 as decimal(18,2)), cast(null as integer), cast(null as integer), cast(null as integer)
+          union all
+          select cast('p1' as varchar), cast('sA' as varchar), cast(8 as bigint), cast('sA-p1-8' as varchar), cast(9 as integer), cast(0 as integer), cast(4 as integer), cast(800 as bigint), cast(2 as integer), cast('Ride 2' as varchar), cast('ride' as varchar), cast(22 as integer), cast('rct2.ride.other' as varchar), cast(40 as integer), cast('open' as varchar), cast(58 as integer), cast(108 as integer), cast(208 as integer), cast(308 as integer), cast(1.08 as decimal(18,2)), cast(2.08 as decimal(18,2)), cast(null as integer), cast(null as integer), cast(30 as bigint), cast(0.00 as decimal(18,2)), cast(null as integer), cast(null as integer), cast(null as integer)
+          union all
+          select cast('p1' as varchar), cast('sA' as varchar), cast(9 as bigint), cast('sA-p1-9' as varchar), cast(9 as integer), cast(0 as integer), cast(1 as integer), cast(900 as bigint), cast(3 as integer), cast('Ride 3' as varchar), cast('ride' as varchar), cast(23 as integer), cast('rct2.ride.burgb' as varchar), cast(40 as integer), cast('open' as varchar), cast(59 as integer), cast(109 as integer), cast(209 as integer), cast(309 as integer), cast(1.09 as decimal(18,2)), cast(2.09 as decimal(18,2)), cast(null as integer), cast(null as integer), cast(0 as bigint), cast(0.00 as decimal(18,2)), cast(null as integer), cast(null as integer), cast(null as integer)
+          union all
+          select cast('p1' as varchar), cast('sA' as varchar), cast(10 as bigint), cast('sA-p1-10' as varchar), cast(9 as integer), cast(0 as integer), cast(2 as integer), cast(1000 as bigint), cast(3 as integer), cast('Ride 3' as varchar), cast('ride' as varchar), cast(23 as integer), cast('rct2.ride.burgb' as varchar), cast(40 as integer), cast('open' as varchar), cast(60 as integer), cast(110 as integer), cast(210 as integer), cast(310 as integer), cast(1.10 as decimal(18,2)), cast(2.10 as decimal(18,2)), cast(null as integer), cast(null as integer), cast(10 as bigint), cast(0.00 as decimal(18,2)), cast(null as integer), cast(null as integer), cast(null as integer)
+          union all
+          select cast('p1' as varchar), cast('sA' as varchar), cast(11 as bigint), cast('sA-p1-11' as varchar), cast(9 as integer), cast(0 as integer), cast(3 as integer), cast(1100 as bigint), cast(3 as integer), cast('Ride 3' as varchar), cast('ride' as varchar), cast(23 as integer), cast('rct2.ride.burgb' as varchar), cast(40 as integer), cast('open' as varchar), cast(61 as integer), cast(111 as integer), cast(211 as integer), cast(311 as integer), cast(1.11 as decimal(18,2)), cast(2.11 as decimal(18,2)), cast(null as integer), cast(null as integer), cast(25 as bigint), cast(0.00 as decimal(18,2)), cast(null as integer), cast(null as integer), cast(null as integer)
+          union all
+          select cast('p1' as varchar), cast('sA' as varchar), cast(12 as bigint), cast('sA-p1-12' as varchar), cast(9 as integer), cast(0 as integer), cast(4 as integer), cast(1200 as bigint), cast(3 as integer), cast('Ride 3' as varchar), cast('ride' as varchar), cast(23 as integer), cast('rct2.ride.burgb' as varchar), cast(40 as integer), cast('open' as varchar), cast(62 as integer), cast(112 as integer), cast(212 as integer), cast(312 as integer), cast(1.12 as decimal(18,2)), cast(2.12 as decimal(18,2)), cast(null as integer), cast(null as integer), cast(25 as bigint), cast(0.00 as decimal(18,2)), cast(null as integer), cast(null as integer), cast(null as integer)
+          union all
+          select cast('p1' as varchar), cast('sA' as varchar), cast(13 as bigint), cast('sA-p1-13' as varchar), cast(9 as integer), cast(0 as integer), cast(1 as integer), cast(1300 as bigint), cast(4 as integer), cast('Ride 4' as varchar), cast('ride' as varchar), cast(24 as integer), cast('rct2.ride.burgb' as varchar), cast(40 as integer), cast('open' as varchar), cast(63 as integer), cast(113 as integer), cast(213 as integer), cast(313 as integer), cast(1.13 as decimal(18,2)), cast(2.13 as decimal(18,2)), cast(null as integer), cast(null as integer), cast(0 as bigint), cast(0.00 as decimal(18,2)), cast(null as integer), cast(null as integer), cast(null as integer)
+          union all
+          select cast('p1' as varchar), cast('sA' as varchar), cast(14 as bigint), cast('sA-p1-14' as varchar), cast(9 as integer), cast(0 as integer), cast(2 as integer), cast(1400 as bigint), cast(4 as integer), cast('Ride 4' as varchar), cast('ride' as varchar), cast(24 as integer), cast('rct2.ride.burgb' as varchar), cast(40 as integer), cast('open' as varchar), cast(64 as integer), cast(114 as integer), cast(214 as integer), cast(314 as integer), cast(1.14 as decimal(18,2)), cast(2.14 as decimal(18,2)), cast(null as integer), cast(null as integer), cast(10 as bigint), cast(0.00 as decimal(18,2)), cast(null as integer), cast(null as integer), cast(null as integer)
+          union all
+          select cast('p1' as varchar), cast('sA' as varchar), cast(15 as bigint), cast('sA-p1-15' as varchar), cast(9 as integer), cast(0 as integer), cast(3 as integer), cast(1500 as bigint), cast(4 as integer), cast('Ride 4' as varchar), cast('ride' as varchar), cast(24 as integer), cast('rct2.ride.burgb' as varchar), cast(40 as integer), cast('open' as varchar), cast(65 as integer), cast(115 as integer), cast(215 as integer), cast(315 as integer), cast(1.15 as decimal(18,2)), cast(2.15 as decimal(18,2)), cast(null as integer), cast(null as integer), cast(25 as bigint), cast(0.00 as decimal(18,2)), cast(null as integer), cast(null as integer), cast(null as integer)
+          union all
+          select cast('p1' as varchar), cast('sA' as varchar), cast(16 as bigint), cast('sA-p1-16' as varchar), cast(9 as integer), cast(0 as integer), cast(4 as integer), cast(1600 as bigint), cast(4 as integer), cast('Ride 4' as varchar), cast('ride' as varchar), cast(24 as integer), cast('rct2.ride.burgb' as varchar), cast(41 as integer), cast('open' as varchar), cast(66 as integer), cast(116 as integer), cast(216 as integer), cast(316 as integer), cast(1.16 as decimal(18,2)), cast(2.16 as decimal(18,2)), cast(null as integer), cast(null as integer), cast(30 as bigint), cast(0.00 as decimal(18,2)), cast(null as integer), cast(null as integer), cast(null as integer)
+          union all
+          select cast('p2' as varchar), cast('sA' as varchar), cast(17 as bigint), cast('sA-p2-17' as varchar), cast(9 as integer), cast(0 as integer), cast(1 as integer), cast(1700 as bigint), cast(1 as integer), cast('Ride 1' as varchar), cast('ride' as varchar), cast(21 as integer), cast('rct2.ride.burgb' as varchar), cast(40 as integer), cast('open' as varchar), cast(67 as integer), cast(117 as integer), cast(217 as integer), cast(317 as integer), cast(1.17 as decimal(18,2)), cast(2.17 as decimal(18,2)), cast(null as integer), cast(null as integer), cast(5 as bigint), cast(0.00 as decimal(18,2)), cast(null as integer), cast(null as integer), cast(null as integer)
+          union all
+          select cast('p2' as varchar), cast('sA' as varchar), cast(18 as bigint), cast('sA-p2-18' as varchar), cast(9 as integer), cast(0 as integer), cast(1 as integer), cast(250 as bigint), cast(1 as integer), cast('Ride 1' as varchar), cast('ride' as varchar), cast(21 as integer), cast('rct2.ride.burgb' as varchar), cast(40 as integer), cast('open' as varchar), cast(72 as integer), cast(122 as integer), cast(222 as integer), cast(322 as integer), cast(1.22 as decimal(18,2)), cast(2.22 as decimal(18,2)), cast(null as integer), cast(null as integer), cast(5 as bigint), cast(0.00 as decimal(18,2)), cast(null as integer), cast(null as integer), cast(null as integer)
+          union all
+          select cast('p1' as varchar), cast('sA' as varchar), cast(19 as bigint), cast('sA-p1-19' as varchar), cast(9 as integer), cast(0 as integer), cast(1 as integer), cast(1800 as bigint), cast(5 as integer), cast('Ride 5' as varchar), cast('ride' as varchar), cast(27 as integer), cast('rct2.ride.burgb' as varchar), cast(40 as integer), cast('open' as varchar), cast(73 as integer), cast(123 as integer), cast(223 as integer), cast(323 as integer), cast(1.23 as decimal(18,2)), cast(2.23 as decimal(18,2)), cast(null as integer), cast(null as integer), cast(0 as bigint), cast(0.00 as decimal(18,2)), cast(null as integer), cast(null as integer), cast(null as integer)
+          union all
+          select cast('p1' as varchar), cast('sA' as varchar), cast(20 as bigint), cast('sA-p1-20' as varchar), cast(9 as integer), cast(0 as integer), cast(2 as integer), cast(1900 as bigint), cast(5 as integer), cast('Ride 5' as varchar), cast('stall' as varchar), cast(27 as integer), cast('rct2.ride.burgb' as varchar), cast(40 as integer), cast('open' as varchar), cast(74 as integer), cast(124 as integer), cast(224 as integer), cast(324 as integer), cast(1.24 as decimal(18,2)), cast(2.24 as decimal(18,2)), cast(null as integer), cast(null as integer), cast(10 as bigint), cast(0.00 as decimal(18,2)), cast(null as integer), cast(null as integer), cast(null as integer)
+          union all
+          select cast('p3' as varchar), cast('sY' as varchar), cast(1 as bigint), cast('sY-p3-1' as varchar), cast(9 as integer), cast(0 as integer), cast(1 as integer), cast(500 as bigint), cast(1 as integer), cast('Ride 1' as varchar), cast('ride' as varchar), cast(21 as integer), cast('rct2.ride.p3' as varchar), cast(40 as integer), cast('open' as varchar), cast(68 as integer), cast(118 as integer), cast(218 as integer), cast(318 as integer), cast(1.18 as decimal(18,2)), cast(2.18 as decimal(18,2)), cast(null as integer), cast(null as integer), cast(40 as bigint), cast(0.00 as decimal(18,2)), cast(null as integer), cast(null as integer), cast(null as integer)
+          union all
+          select cast('p3' as varchar), cast('sY' as varchar), cast(4 as bigint), cast('sY-p3-4' as varchar), cast(9 as integer), cast(0 as integer), cast(2 as integer), cast(600 as bigint), cast(1 as integer), cast('Ride 1' as varchar), cast('ride' as varchar), cast(21 as integer), cast('rct2.ride.p3' as varchar), cast(40 as integer), cast('open' as varchar), cast(69 as integer), cast(119 as integer), cast(219 as integer), cast(319 as integer), cast(1.19 as decimal(18,2)), cast(2.19 as decimal(18,2)), cast(null as integer), cast(null as integer), cast(50 as bigint), cast(0.00 as decimal(18,2)), cast(null as integer), cast(null as integer), cast(null as integer)
+          union all
+          select cast('p3' as varchar), cast('sX' as varchar), cast(1 as bigint), cast('sX-p3-1' as varchar), cast(9 as integer), cast(0 as integer), cast(2 as integer), cast(600 as bigint), cast(1 as integer), cast('Ride 1' as varchar), cast('ride' as varchar), cast(21 as integer), cast('rct2.ride.p3' as varchar), cast(40 as integer), cast('open' as varchar), cast(70 as integer), cast(120 as integer), cast(220 as integer), cast(320 as integer), cast(1.20 as decimal(18,2)), cast(2.20 as decimal(18,2)), cast(null as integer), cast(null as integer), cast(52 as bigint), cast(0.00 as decimal(18,2)), cast(null as integer), cast(null as integer), cast(null as integer)
+          union all
+          select cast('p3' as varchar), cast('sX' as varchar), cast(2 as bigint), cast('sX-p3-2' as varchar), cast(9 as integer), cast(0 as integer), cast(3 as integer), cast(700 as bigint), cast(1 as integer), cast('Ride 1' as varchar), cast('ride' as varchar), cast(21 as integer), cast('rct2.ride.p3' as varchar), cast(40 as integer), cast('open' as varchar), cast(71 as integer), cast(121 as integer), cast(221 as integer), cast(321 as integer), cast(1.21 as decimal(18,2)), cast(2.21 as decimal(18,2)), cast(null as integer), cast(null as integer), cast(58 as bigint), cast(0.00 as decimal(18,2)), cast(null as integer), cast(null as integer), cast(null as integer)
+      - input: ref('int_sessions__lineage')
+        format: sql
+        rows: |
+          select cast('sA' as varchar) as session_id, cast(true as boolean) as is_on_kept_path, cast(100 as bigint) as cut_seq, cast('2026-10-01 08:00:00+00' as timestamp with time zone) as session_started_at
+          union all
+          select cast('sY' as varchar), cast(true as boolean), cast(100 as bigint), cast('2026-10-01 09:00:00+00' as timestamp with time zone)
+          union all
+          select cast('sX' as varchar), cast(true as boolean), cast(100 as bigint), cast('2026-10-01 10:00:00+00' as timestamp with time zone)
+      - input: ref('int_park_days__company_calendar')
+        format: sql
+        rows: |
+          select cast('p1' as varchar) as park_id, cast(9 as integer) as game_year, cast(0 as integer) as game_month, cast(1 as integer) as game_day, cast(2000 as integer) as company_year, cast('2000-03-01' as date) as company_date
+          union all
+          select cast('p1' as varchar), cast(9 as integer), cast(0 as integer), cast(2 as integer), cast(2000 as integer), cast('2000-03-02' as date)
+          union all
+          select cast('p1' as varchar), cast(9 as integer), cast(0 as integer), cast(3 as integer), cast(2000 as integer), cast('2000-03-03' as date)
+          union all
+          select cast('p1' as varchar), cast(9 as integer), cast(0 as integer), cast(4 as integer), cast(2000 as integer), cast('2000-03-04' as date)
+          union all
+          select cast('p2' as varchar), cast(9 as integer), cast(0 as integer), cast(1 as integer), cast(2003 as integer), cast('2003-03-01' as date)
+          union all
+          select cast('p3' as varchar), cast(9 as integer), cast(0 as integer), cast(1 as integer), cast(2006 as integer), cast('2006-03-01' as date)
+          union all
+          select cast('p3' as varchar), cast(9 as integer), cast(0 as integer), cast(2 as integer), cast(2006 as integer), cast('2006-03-02' as date)
+          union all
+          select cast('p3' as varchar), cast(9 as integer), cast(0 as integer), cast(3 as integer), cast(2006 as integer), cast('2006-03-03' as date)
+    expect:
+      rows:
+        - {ride_key: 'p1|1|40|100', ride_day_key: 'p1|1|40|100|9|0|1', session_id: sA, first_seen_ticks: 100, total_customers: 0, customers_increase: 10, ride_price_listed_usd: 1.01}
+        - {ride_key: 'p1|1|40|100', ride_day_key: 'p1|1|40|100|9|0|2', session_id: sA, first_seen_ticks: 100, total_customers: 10, customers_increase: 15, ride_price_listed_usd: 1.02}
+        - {ride_key: 'p1|1|40|100', ride_day_key: 'p1|1|40|100|9|0|3', session_id: sA, first_seen_ticks: 100, total_customers: 25, customers_increase: null, ride_price_listed_usd: 1.03}
+        - {ride_key: 'p1|1|40|400', ride_day_key: 'p1|1|40|400|9|0|4', session_id: sA, first_seen_ticks: 400, total_customers: 0, customers_increase: null, ride_price_listed_usd: 1.04}
+        - {ride_key: 'p1|2|40|500', ride_day_key: 'p1|2|40|500|9|0|1', session_id: sA, first_seen_ticks: 500, total_customers: 0, customers_increase: 10, ride_price_listed_usd: 1.05}
+        - {ride_key: 'p1|2|40|500', ride_day_key: 'p1|2|40|500|9|0|2', session_id: sA, first_seen_ticks: 500, total_customers: 10, customers_increase: 15, ride_price_listed_usd: 1.06}
+        - {ride_key: 'p1|2|40|500', ride_day_key: 'p1|2|40|500|9|0|3', session_id: sA, first_seen_ticks: 500, total_customers: 25, customers_increase: null, ride_price_listed_usd: 1.07}
+        - {ride_key: 'p1|2|40|800', ride_day_key: 'p1|2|40|800|9|0|4', session_id: sA, first_seen_ticks: 800, total_customers: 30, customers_increase: null, ride_price_listed_usd: 1.08}
+        - {ride_key: 'p1|4|40|1300', ride_day_key: 'p1|4|40|1300|9|0|1', session_id: sA, first_seen_ticks: 1300, total_customers: 0, customers_increase: 10, ride_price_listed_usd: 1.13}
+        - {ride_key: 'p1|4|40|1300', ride_day_key: 'p1|4|40|1300|9|0|2', session_id: sA, first_seen_ticks: 1300, total_customers: 10, customers_increase: 15, ride_price_listed_usd: 1.14}
+        - {ride_key: 'p1|4|40|1300', ride_day_key: 'p1|4|40|1300|9|0|3', session_id: sA, first_seen_ticks: 1300, total_customers: 25, customers_increase: null, ride_price_listed_usd: 1.15}
+        - {ride_key: 'p1|4|41|1600', ride_day_key: 'p1|4|41|1600|9|0|4', session_id: sA, first_seen_ticks: 1600, total_customers: 30, customers_increase: null, ride_price_listed_usd: 1.16}
+        - {ride_key: 'p1|3|40|900', ride_day_key: 'p1|3|40|900|9|0|1', session_id: sA, first_seen_ticks: 900, total_customers: 0, customers_increase: 10, ride_price_listed_usd: 1.09}
+        - {ride_key: 'p1|3|40|900', ride_day_key: 'p1|3|40|900|9|0|2', session_id: sA, first_seen_ticks: 900, total_customers: 10, customers_increase: 15, ride_price_listed_usd: 1.10}
+        - {ride_key: 'p1|3|40|900', ride_day_key: 'p1|3|40|900|9|0|3', session_id: sA, first_seen_ticks: 900, total_customers: 25, customers_increase: 0, ride_price_listed_usd: 1.11}
+        - {ride_key: 'p1|3|40|900', ride_day_key: 'p1|3|40|900|9|0|4', session_id: sA, first_seen_ticks: 900, total_customers: 25, customers_increase: null, ride_price_listed_usd: 1.12}
+        - {ride_key: 'p2|1|40|250', ride_day_key: 'p2|1|40|250|9|0|1', session_id: sA, first_seen_ticks: 250, total_customers: 5, customers_increase: 0, ride_price_listed_usd: 1.17}
+        - {ride_key: 'p1|5|40|1800', ride_day_key: 'p1|5|40|1800|9|0|1', session_id: sA, first_seen_ticks: 1800, total_customers: 0, customers_increase: null, ride_price_listed_usd: 1.23}
+        - {ride_key: 'p1|5|40|1900', ride_day_key: 'p1|5|40|1900|9|0|2', session_id: sA, first_seen_ticks: 1900, total_customers: 10, customers_increase: null, ride_price_listed_usd: null}
+        - {ride_key: 'p3|1|40|500', ride_day_key: 'p3|1|40|500|9|0|1', session_id: sY, first_seen_ticks: 500, total_customers: 40, customers_increase: 10, ride_price_listed_usd: 1.18}
+        - {ride_key: 'p3|1|40|500', ride_day_key: 'p3|1|40|500|9|0|2', session_id: sX, first_seen_ticks: 500, total_customers: 52, customers_increase: 6, ride_price_listed_usd: 1.20}
+        - {ride_key: 'p3|1|40|500', ride_day_key: 'p3|1|40|500|9|0|3', session_id: sX, first_seen_ticks: 500, total_customers: 58, customers_increase: null, ride_price_listed_usd: 1.21}
+  - name: int_ride_days__kept_u1b_same_date_replacement
+    description: >-
+      It proves that a different ride type starts a new occupancy when one
+      slot is replaced on the same game date, and that both occupancies keep
+      separate rows for that date, with each occupancy's customer and profit
+      changes staying within that occupancy.
+    model: int_ride_days__kept
+    given:
+      - input: ref('stg_ride_snapshot')
+        format: sql
+        rows: |
+          select cast('p1' as varchar) as park_id, cast('sA' as varchar) as session_id, cast(1 as bigint) as seq, cast('sA-p1-1' as varchar) as event_id, cast(9 as integer) as game_year, cast(0 as integer) as game_month, cast(30 as integer) as game_day, cast(100 as bigint) as game_ticks_elapsed, cast(1 as integer) as ride_id, cast('Ride 1' as varchar) as ride_name, cast('ride' as varchar) as classification, cast(21 as integer) as ride_type, cast('rct2.ride.burgb' as varchar) as ride_object, cast(40 as integer) as build_date_months_elapsed, cast('open' as varchar) as status, cast(51 as integer) as age_months, cast(101 as integer) as excitement_hundredths, cast(201 as integer) as intensity_hundredths, cast(301 as integer) as nausea_hundredths, cast(1.01 as decimal(18,2)) as price_1_usd, cast(2.01 as decimal(18,2)) as price_2_usd, cast(null as integer) as shop_item, cast(null as integer) as shop_item_secondary, cast(50 as bigint) as total_customers, cast(5.00 as decimal(18,2)) as total_profit_usd, cast(null as integer) as downtime_pct, cast(null as integer) as satisfaction_pct, cast(null as integer) as queue_time_max_minutes
+          union all
+          select cast('p1' as varchar), cast('sA' as varchar), cast(2 as bigint), cast('sA-p1-2' as varchar), cast(9 as integer), cast(0 as integer), cast(30 as integer), cast(150 as bigint), cast(1 as integer), cast('Ride 1' as varchar), cast('ride' as varchar), cast(22 as integer), cast('rct2.ride.burgb' as varchar), cast(40 as integer), cast('open' as varchar), cast(52 as integer), cast(102 as integer), cast(202 as integer), cast(302 as integer), cast(1.02 as decimal(18,2)), cast(2.02 as decimal(18,2)), cast(null as integer), cast(null as integer), cast(0 as bigint), cast(0.00 as decimal(18,2)), cast(null as integer), cast(null as integer), cast(null as integer)
+          union all
+          select cast('p1' as varchar), cast('sA' as varchar), cast(3 as bigint), cast('sA-p1-3' as varchar), cast(9 as integer), cast(0 as integer), cast(31 as integer), cast(200 as bigint), cast(1 as integer), cast('Ride 1' as varchar), cast('ride' as varchar), cast(22 as integer), cast('rct2.ride.burgb' as varchar), cast(40 as integer), cast('open' as varchar), cast(53 as integer), cast(103 as integer), cast(203 as integer), cast(303 as integer), cast(1.03 as decimal(18,2)), cast(2.03 as decimal(18,2)), cast(null as integer), cast(null as integer), cast(10 as bigint), cast(1.25 as decimal(18,2)), cast(null as integer), cast(null as integer), cast(null as integer)
+      - input: ref('int_sessions__lineage')
+        format: sql
+        rows: |
+          select cast('sA' as varchar) as session_id, cast(true as boolean) as is_on_kept_path, cast(100 as bigint) as cut_seq, cast('2026-10-01 08:00:00+00' as timestamp with time zone) as session_started_at
+      - input: ref('int_park_days__company_calendar')
+        format: sql
+        rows: |
+          select cast('p1' as varchar) as park_id, cast(9 as integer) as game_year, cast(0 as integer) as game_month, cast(30 as integer) as game_day, cast(2000 as integer) as company_year, cast('2000-03-30' as date) as company_date
+          union all
+          select cast('p1' as varchar), cast(9 as integer), cast(0 as integer), cast(31 as integer), cast(2000 as integer), cast('2000-03-31' as date)
+    expect:
+      rows:
+        - {ride_key: 'p1|1|40|100', ride_day_key: 'p1|1|40|100|9|0|30', session_id: sA, first_seen_ticks: 100, total_customers: 50, customers_increase: null, profit_usd: null, ride_price_listed_usd: 1.01}
+        - {ride_key: 'p1|1|40|150', ride_day_key: 'p1|1|40|150|9|0|30', session_id: sA, first_seen_ticks: 150, total_customers: 0, customers_increase: 10, profit_usd: 1.25, ride_price_listed_usd: 1.02}
+        - {ride_key: 'p1|1|40|150', ride_day_key: 'p1|1|40|150|9|0|31', session_id: sA, first_seen_ticks: 150, total_customers: 10, customers_increase: null, profit_usd: null, ride_price_listed_usd: 1.03}
+  - name: int_ride_days__kept_u2_sessions_and_same_date_readings
+    description: >-
+      It proves that the day's last kept reading supplies the snapshot
+      columns, that every reading's rise stays in the day's sum, including an
+      earlier session's last reading on a date a later session shares, that an
+      abandoned reading is absent, and that the listed ride price is null for
+      a stall and a facility.
+    model: int_ride_days__kept
+    given:
+      - input: ref('stg_ride_snapshot')
+        format: sql
+        rows: |
+          select cast('p1' as varchar) as park_id, cast('sA' as varchar) as session_id, cast(1 as bigint) as seq, cast('sA-p1-1' as varchar) as event_id, cast(9 as integer) as game_year, cast(0 as integer) as game_month, cast(30 as integer) as game_day, cast(1001 as bigint) as game_ticks_elapsed, cast(5 as integer) as ride_id, cast('Ride 5' as varchar) as ride_name, cast('stall' as varchar) as classification, cast(25 as integer) as ride_type, cast('rct2.ride.burgb' as varchar) as ride_object, cast(40 as integer) as build_date_months_elapsed, cast('open' as varchar) as status, cast(51 as integer) as age_months, cast(101 as integer) as excitement_hundredths, cast(201 as integer) as intensity_hundredths, cast(301 as integer) as nausea_hundredths, cast(1.50 as decimal(18,2)) as price_1_usd, cast(2.01 as decimal(18,2)) as price_2_usd, cast(7 as integer) as shop_item, cast(null as integer) as shop_item_secondary, cast(100 as bigint) as total_customers, cast(10.00 as decimal(18,2)) as total_profit_usd, cast(null as integer) as downtime_pct, cast(null as integer) as satisfaction_pct, cast(null as integer) as queue_time_max_minutes
+          union all
+          select cast('p1' as varchar), cast('sA' as varchar), cast(3 as bigint), cast('sA-p1-3' as varchar), cast(9 as integer), cast(0 as integer), cast(31 as integer), cast(1003 as bigint), cast(5 as integer), cast('Ride 5' as varchar), cast('stall' as varchar), cast(25 as integer), cast('rct2.ride.burgb' as varchar), cast(40 as integer), cast('open' as varchar), cast(52 as integer), cast(102 as integer), cast(202 as integer), cast(302 as integer), cast(1.50 as decimal(18,2)), cast(2.02 as decimal(18,2)), cast(7 as integer), cast(null as integer), cast(110 as bigint), cast(12.50 as decimal(18,2)), cast(null as integer), cast(null as integer), cast(null as integer)
+          union all
+          select cast('p1' as varchar), cast('sA' as varchar), cast(4 as bigint), cast('sA-p1-4' as varchar), cast(9 as integer), cast(1 as integer), cast(1 as integer), cast(1004 as bigint), cast(5 as integer), cast('Ride 5' as varchar), cast('stall' as varchar), cast(25 as integer), cast('rct2.ride.burgb' as varchar), cast(40 as integer), cast('open' as varchar), cast(53 as integer), cast(103 as integer), cast(203 as integer), cast(303 as integer), cast(1.50 as decimal(18,2)), cast(2.03 as decimal(18,2)), cast(7 as integer), cast(null as integer), cast(123 as bigint), cast(12.00 as decimal(18,2)), cast(null as integer), cast(null as integer), cast(null as integer)
+          union all
+          select cast('p1' as varchar), cast('sA' as varchar), cast(5 as bigint), cast('sA-p1-5' as varchar), cast(9 as integer), cast(1 as integer), cast(1 as integer), cast(1005 as bigint), cast(5 as integer), cast('Ride 5' as varchar), cast('stall' as varchar), cast(25 as integer), cast('rct2.ride.burgb' as varchar), cast(40 as integer), cast('open' as varchar), cast(54 as integer), cast(104 as integer), cast(204 as integer), cast(304 as integer), cast(1.50 as decimal(18,2)), cast(2.04 as decimal(18,2)), cast(7 as integer), cast(null as integer), cast(125 as bigint), cast(11.50 as decimal(18,2)), cast(null as integer), cast(null as integer), cast(null as integer)
+          union all
+          select cast('p1' as varchar), cast('sA' as varchar), cast(6 as bigint), cast('sA-p1-6' as varchar), cast(9 as integer), cast(1 as integer), cast(2 as integer), cast(1006 as bigint), cast(5 as integer), cast('Ride 5' as varchar), cast('stall' as varchar), cast(25 as integer), cast('rct2.ride.burgb' as varchar), cast(40 as integer), cast('open' as varchar), cast(55 as integer), cast(105 as integer), cast(205 as integer), cast(305 as integer), cast(1.50 as decimal(18,2)), cast(2.05 as decimal(18,2)), cast(7 as integer), cast(null as integer), cast(132 as bigint), cast(12.25 as decimal(18,2)), cast(null as integer), cast(null as integer), cast(null as integer)
+          union all
+          select cast('p1' as varchar), cast('sA' as varchar), cast(7 as bigint), cast('sA-p1-7' as varchar), cast(9 as integer), cast(1 as integer), cast(3 as integer), cast(1007 as bigint), cast(5 as integer), cast('Ride 5' as varchar), cast('stall' as varchar), cast(25 as integer), cast('rct2.ride.burgb' as varchar), cast(40 as integer), cast('open' as varchar), cast(56 as integer), cast(106 as integer), cast(206 as integer), cast(306 as integer), cast(1.50 as decimal(18,2)), cast(2.06 as decimal(18,2)), cast(7 as integer), cast(null as integer), cast(150 as bigint), cast(13.75 as decimal(18,2)), cast(null as integer), cast(null as integer), cast(null as integer)
+          union all
+          select cast('p1' as varchar), cast('sB' as varchar), cast(1 as bigint), cast('sB-p1-1' as varchar), cast(9 as integer), cast(1 as integer), cast(2 as integer), cast(2001 as bigint), cast(5 as integer), cast('Ride 5' as varchar), cast('stall' as varchar), cast(25 as integer), cast('rct2.ride.burgb' as varchar), cast(40 as integer), cast('open' as varchar), cast(57 as integer), cast(107 as integer), cast(207 as integer), cast(307 as integer), cast(1.50 as decimal(18,2)), cast(2.07 as decimal(18,2)), cast(7 as integer), cast(null as integer), cast(135 as bigint), cast(12.80 as decimal(18,2)), cast(null as integer), cast(null as integer), cast(null as integer)
+          union all
+          select cast('p1' as varchar), cast('sB' as varchar), cast(2 as bigint), cast('sB-p1-2' as varchar), cast(9 as integer), cast(1 as integer), cast(3 as integer), cast(2002 as bigint), cast(5 as integer), cast('Ride 5' as varchar), cast('stall' as varchar), cast(25 as integer), cast('rct2.ride.burgb' as varchar), cast(40 as integer), cast('open' as varchar), cast(58 as integer), cast(108 as integer), cast(208 as integer), cast(308 as integer), cast(1.50 as decimal(18,2)), cast(2.08 as decimal(18,2)), cast(7 as integer), cast(null as integer), cast(141 as bigint), cast(12.60 as decimal(18,2)), cast(null as integer), cast(null as integer), cast(null as integer)
+          union all
+          select cast('p1' as varchar), cast('sA' as varchar), cast(2 as bigint), cast('sA-p1-2' as varchar), cast(9 as integer), cast(0 as integer), cast(30 as integer), cast(1002 as bigint), cast(6 as integer), cast('Ride 6' as varchar), cast('facility' as varchar), cast(26 as integer), cast('rct2.ride.burgb' as varchar), cast(40 as integer), cast('closed' as varchar), cast(59 as integer), cast(109 as integer), cast(209 as integer), cast(309 as integer), cast(0.50 as decimal(18,2)), cast(2.09 as decimal(18,2)), cast(null as integer), cast(null as integer), cast(60 as bigint), cast(3.00 as decimal(18,2)), cast(null as integer), cast(null as integer), cast(null as integer)
+      - input: ref('int_sessions__lineage')
+        format: sql
+        rows: |
+          select cast('sA' as varchar) as session_id, cast(true as boolean) as is_on_kept_path, cast(7 as bigint) as cut_seq, cast('2026-10-01 08:00:00+00' as timestamp with time zone) as session_started_at
+          union all
+          select cast('sB' as varchar), cast(true as boolean), cast(3 as bigint), cast('2026-10-01 09:00:00+00' as timestamp with time zone)
+      - input: ref('int_park_days__company_calendar')
+        format: sql
+        rows: |
+          select cast('p1' as varchar) as park_id, cast(9 as integer) as game_year, cast(0 as integer) as game_month, cast(30 as integer) as game_day, cast(2000 as integer) as company_year, cast('2000-03-30' as date) as company_date
+          union all
+          select cast('p1' as varchar), cast(9 as integer), cast(0 as integer), cast(31 as integer), cast(2000 as integer), cast('2000-03-31' as date)
+          union all
+          select cast('p1' as varchar), cast(9 as integer), cast(1 as integer), cast(1 as integer), cast(2000 as integer), cast('2000-04-01' as date)
+          union all
+          select cast('p1' as varchar), cast(9 as integer), cast(1 as integer), cast(2 as integer), cast(2000 as integer), cast('2000-04-02' as date)
+          union all
+          select cast('p1' as varchar), cast(9 as integer), cast(1 as integer), cast(3 as integer), cast(2000 as integer), cast('2000-04-03' as date)
+    expect:
+      rows:
+        - {ride_day_key: 'p1|5|40|1001|9|0|30', ride_key: 'p1|5|40|1001', park_day_key: 'p1|9|0|30', park_id: p1, ride_id: 5, session_id: sA, seq: 1, event_id: 'sA-p1-1', game_year: 9, game_month: 0, game_day: 30, game_ticks_elapsed: 1001, first_seen_ticks: 1001, company_year: 2000, company_date: '2000-03-30', ride_name: Ride 5, classification: stall, ride_type: 25, ride_object: rct2.ride.burgb, build_date_months_elapsed: 40, status: open, is_open_day: true, ride_age_months: 51, excitement_hundredths: 101, intensity_hundredths: 201, nausea_hundredths: 301, price_1_usd: 1.50, price_2_usd: 2.01, ride_price_listed_usd: null, shop_item: 7, shop_item_secondary: null, total_customers: 100, customers_increase: 10, total_profit_usd: 10.00, profit_usd: 2.50}
+        - {ride_day_key: 'p1|5|40|1001|9|0|31', ride_key: 'p1|5|40|1001', park_day_key: 'p1|9|0|31', park_id: p1, ride_id: 5, session_id: sA, seq: 3, event_id: 'sA-p1-3', game_year: 9, game_month: 0, game_day: 31, game_ticks_elapsed: 1003, first_seen_ticks: 1001, company_year: 2000, company_date: '2000-03-31', ride_name: Ride 5, classification: stall, ride_type: 25, ride_object: rct2.ride.burgb, build_date_months_elapsed: 40, status: open, is_open_day: true, ride_age_months: 52, excitement_hundredths: 102, intensity_hundredths: 202, nausea_hundredths: 302, price_1_usd: 1.50, price_2_usd: 2.02, ride_price_listed_usd: null, shop_item: 7, shop_item_secondary: null, total_customers: 110, customers_increase: 13, total_profit_usd: 12.50, profit_usd: -0.50}
+        - {ride_day_key: 'p1|5|40|1001|9|1|1', ride_key: 'p1|5|40|1001', park_day_key: 'p1|9|1|1', park_id: p1, ride_id: 5, session_id: sA, seq: 5, event_id: 'sA-p1-5', game_year: 9, game_month: 1, game_day: 1, game_ticks_elapsed: 1005, first_seen_ticks: 1001, company_year: 2000, company_date: '2000-04-01', ride_name: Ride 5, classification: stall, ride_type: 25, ride_object: rct2.ride.burgb, build_date_months_elapsed: 40, status: open, is_open_day: true, ride_age_months: 54, excitement_hundredths: 104, intensity_hundredths: 204, nausea_hundredths: 304, price_1_usd: 1.50, price_2_usd: 2.04, ride_price_listed_usd: null, shop_item: 7, shop_item_secondary: null, total_customers: 125, customers_increase: 9, total_profit_usd: 11.50, profit_usd: 0.25}
+        - {ride_day_key: 'p1|5|40|1001|9|1|2', ride_key: 'p1|5|40|1001', park_day_key: 'p1|9|1|2', park_id: p1, ride_id: 5, session_id: sB, seq: 1, event_id: 'sB-p1-1', game_year: 9, game_month: 1, game_day: 2, game_ticks_elapsed: 2001, first_seen_ticks: 1001, company_year: 2000, company_date: '2000-04-02', ride_name: Ride 5, classification: stall, ride_type: 25, ride_object: rct2.ride.burgb, build_date_months_elapsed: 40, status: open, is_open_day: true, ride_age_months: 57, excitement_hundredths: 107, intensity_hundredths: 207, nausea_hundredths: 307, price_1_usd: 1.50, price_2_usd: 2.07, ride_price_listed_usd: null, shop_item: 7, shop_item_secondary: null, total_customers: 135, customers_increase: 6, total_profit_usd: 12.80, profit_usd: -0.20}
+        - {ride_day_key: 'p1|5|40|1001|9|1|3', ride_key: 'p1|5|40|1001', park_day_key: 'p1|9|1|3', park_id: p1, ride_id: 5, session_id: sB, seq: 2, event_id: 'sB-p1-2', game_year: 9, game_month: 1, game_day: 3, game_ticks_elapsed: 2002, first_seen_ticks: 1001, company_year: 2000, company_date: '2000-04-03', ride_name: Ride 5, classification: stall, ride_type: 25, ride_object: rct2.ride.burgb, build_date_months_elapsed: 40, status: open, is_open_day: true, ride_age_months: 58, excitement_hundredths: 108, intensity_hundredths: 208, nausea_hundredths: 308, price_1_usd: 1.50, price_2_usd: 2.08, ride_price_listed_usd: null, shop_item: 7, shop_item_secondary: null, total_customers: 141, customers_increase: null, total_profit_usd: 12.60, profit_usd: null}
+        - {ride_day_key: 'p1|6|40|1002|9|0|30', ride_key: 'p1|6|40|1002', park_day_key: 'p1|9|0|30', park_id: p1, ride_id: 6, session_id: sA, seq: 2, event_id: 'sA-p1-2', game_year: 9, game_month: 0, game_day: 30, game_ticks_elapsed: 1002, first_seen_ticks: 1002, company_year: 2000, company_date: '2000-03-30', ride_name: Ride 6, classification: facility, ride_type: 26, ride_object: rct2.ride.burgb, build_date_months_elapsed: 40, status: closed, is_open_day: false, ride_age_months: 59, excitement_hundredths: 109, intensity_hundredths: 209, nausea_hundredths: 309, price_1_usd: 0.50, price_2_usd: 2.09, ride_price_listed_usd: null, shop_item: null, shop_item_secondary: null, total_customers: 60, customers_increase: null, total_profit_usd: 3.00, profit_usd: null}
+  - name: int_ride_days__kept_u_dept_figures
+    description: >-
+      It proves that the day's longest queue is the maximum over the day's
+      kept readings even when the last reading is lower, that availability and
+      the guest rating come from the day's last kept reading, that a ride with
+      null readings gets null figures, and that a stall gets null figures
+      although its source columns hold values.
+    model: int_ride_days__kept
+    given:
+      - input: ref('stg_ride_snapshot')
+        format: sql
+        rows: |
+          select cast('p1' as varchar) as park_id, cast('sA' as varchar) as session_id, cast(1 as bigint) as seq, cast('sA-p1-1' as varchar) as event_id, cast(9 as integer) as game_year, cast(0 as integer) as game_month, cast(1 as integer) as game_day, cast(100 as bigint) as game_ticks_elapsed, cast(1 as integer) as ride_id, cast('Ride 1' as varchar) as ride_name, cast('ride' as varchar) as classification, cast(21 as integer) as ride_type, cast('rct2.ride.burgb' as varchar) as ride_object, cast(40 as integer) as build_date_months_elapsed, cast('open' as varchar) as status, cast(51 as integer) as age_months, cast(101 as integer) as excitement_hundredths, cast(201 as integer) as intensity_hundredths, cast(301 as integer) as nausea_hundredths, cast(1.01 as decimal(18,2)) as price_1_usd, cast(2.01 as decimal(18,2)) as price_2_usd, cast(null as integer) as shop_item, cast(null as integer) as shop_item_secondary, cast(0 as bigint) as total_customers, cast(0.00 as decimal(18,2)) as total_profit_usd, cast(20 as integer) as downtime_pct, cast(70 as integer) as satisfaction_pct, cast(9 as integer) as queue_time_max_minutes
+          union all
+          select cast('p1' as varchar), cast('sA' as varchar), cast(2 as bigint), cast('sA-p1-2' as varchar), cast(9 as integer), cast(0 as integer), cast(1 as integer), cast(200 as bigint), cast(1 as integer), cast('Ride 1' as varchar), cast('ride' as varchar), cast(21 as integer), cast('rct2.ride.burgb' as varchar), cast(40 as integer), cast('open' as varchar), cast(51 as integer), cast(101 as integer), cast(201 as integer), cast(301 as integer), cast(1.01 as decimal(18,2)), cast(2.01 as decimal(18,2)), cast(null as integer), cast(null as integer), cast(5 as bigint), cast(0.00 as decimal(18,2)), cast(14 as integer), cast(75 as integer), cast(4 as integer)
+          union all
+          select cast('p1' as varchar), cast('sA' as varchar), cast(3 as bigint), cast('sA-p1-3' as varchar), cast(9 as integer), cast(0 as integer), cast(2 as integer), cast(300 as bigint), cast(2 as integer), cast('Ride 2' as varchar), cast('ride' as varchar), cast(21 as integer), cast('rct2.ride.burgb' as varchar), cast(40 as integer), cast('open' as varchar), cast(51 as integer), cast(101 as integer), cast(201 as integer), cast(301 as integer), cast(1.01 as decimal(18,2)), cast(2.01 as decimal(18,2)), cast(null as integer), cast(null as integer), cast(0 as bigint), cast(0.00 as decimal(18,2)), cast(null as integer), cast(null as integer), cast(null as integer)
+          union all
+          select cast('p1' as varchar), cast('sA' as varchar), cast(4 as bigint), cast('sA-p1-4' as varchar), cast(9 as integer), cast(0 as integer), cast(3 as integer), cast(400 as bigint), cast(3 as integer), cast('Ride 3' as varchar), cast('stall' as varchar), cast(21 as integer), cast('rct2.ride.burgb' as varchar), cast(40 as integer), cast('open' as varchar), cast(51 as integer), cast(101 as integer), cast(201 as integer), cast(301 as integer), cast(1.01 as decimal(18,2)), cast(2.01 as decimal(18,2)), cast(null as integer), cast(null as integer), cast(0 as bigint), cast(0.00 as decimal(18,2)), cast(0 as integer), cast(40 as integer), cast(0 as integer)
+      - input: ref('int_sessions__lineage')
+        format: sql
+        rows: |
+          select cast('sA' as varchar) as session_id, cast(true as boolean) as is_on_kept_path, cast(100 as bigint) as cut_seq, cast('2026-10-01 08:00:00+00' as timestamp with time zone) as session_started_at
+      - input: ref('int_park_days__company_calendar')
+        format: sql
+        rows: |
+          select cast('p1' as varchar) as park_id, cast(9 as integer) as game_year, cast(0 as integer) as game_month, cast(1 as integer) as game_day, cast(2000 as integer) as company_year, cast('2000-03-01' as date) as company_date
+          union all
+          select cast('p1' as varchar), cast(9 as integer), cast(0 as integer), cast(2 as integer), cast(2000 as integer), cast('2000-03-02' as date)
+          union all
+          select cast('p1' as varchar), cast(9 as integer), cast(0 as integer), cast(3 as integer), cast(2000 as integer), cast('2000-03-03' as date)
+    expect:
+      rows:
+        - {ride_day_key: 'p1|1|40|100|9|0|1', classification: ride, longest_queue_seen_minutes: 9, availability_from_downtime_pct: 86, guest_rating_pct: 75}
+        - {ride_day_key: 'p1|2|40|300|9|0|2', classification: ride, longest_queue_seen_minutes: null, availability_from_downtime_pct: null, guest_rating_pct: null}
+        - {ride_day_key: 'p1|3|40|400|9|0|3', classification: stall, longest_queue_seen_minutes: null, availability_from_downtime_pct: null, guest_rating_pct: null}

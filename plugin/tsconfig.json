@@ -1,0 +1,12 @@
+{
+  "compilerOptions": {
+    "target": "ES5",
+    "lib": ["es5"],
+    "module": "none",
+    "strict": true,
+    "outFile": "dist/openrct2-analytics.js",
+    "types": ["@openrct2/types"],
+    "typeRoots": ["../node_modules"]
+  },
+  "include": ["src/**/*.ts"]
+}

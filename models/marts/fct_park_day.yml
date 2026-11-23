@@ -1,0 +1,84 @@
+version: 2
+
+models:
+  - name: fct_park_day
+    description: >-
+      Answers what each park's day-start conditions and admissions rise were
+      on each kept game day. Sample rule: kept rows only. Grain: one row per
+      park per game day on the kept timeline. Key: park_day_key, formed from
+      the game date and never the company date. Unit: none for the model as a
+      whole (units are stated on each measure); clock: game calendar for the key,
+      company date (day) for the date and the day-start readings.
+      On the zero-row build the model is empty because there are no kept
+      park-days.
+    config:
+      contract:
+        enforced: true
+    meta:
+      expected_min_rows: 1
+    data_tests:
+      - rows_on_sample:
+          arguments:
+            expected: 105
+    columns:
+      - name: park_day_key
+        data_type: varchar
+        description: "Park identifier and game date joined by pipes; text; no unit; clock: game day."
+        data_tests:
+          - unique
+          - not_null
+      - name: park_id
+        data_type: varchar
+        description: "Stable park identifier from park storage; text; no unit; no clock."
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_park')
+                field: park_id
+      - name: session_id
+        data_type: varchar
+        description: "Plugin start identifier, new on every start; text; no unit; clock: session."
+      - name: event_id
+        data_type: varchar
+        description: "Unique identifier for the source park snapshot; text; no unit; clock: event."
+        data_tests: [not_null]
+      - name: game_year
+        data_type: integer
+        description: "In-game year; unit: year; clock: game calendar."
+      - name: game_month
+        data_type: integer
+        description: "In-game month numbered 0 to 7; unit: month; clock: game calendar."
+      - name: game_day
+        data_type: integer
+        description: "In-game day of the month; unit: day; clock: game calendar."
+      - name: company_date
+        data_type: date
+        description: "Company calendar date for the game day; unit: date; clock: company date."
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: company_date
+      - name: admissions_increase
+        data_type: bigint
+        description: "Rise in cumulative admissions through the next kept reading, assigned to this game day; null on each session's last kept reading; unit: guests; clock: company date (day), assigned to the earlier game day."
+      - name: park_rating
+        data_type: integer
+        description: "Park rating at the start of the game day; unit: rating points; clock: company date (day), read at the start of the game day."
+      - name: guests_in_park
+        data_type: integer
+        description: "Guests in the park at the start of the game day, a day-start count that adds across parks and must never be summed across days; unit: guests; clock: company date (day), read at the start of the game day."
+      - name: cash_usd
+        data_type: decimal(18,2)
+        description: "Park cash at the start of the game day, a day-start balance that adds across parks and must never be summed across days; unit: US dollars; clock: company date (day), read at the start of the game day."
+      - name: weather
+        data_type: varchar
+        description: "Weather named by the game at the start of the game day; text, no unit; clock: company date (day)."
+      - name: temperature_c
+        data_type: integer
+        description: "Park temperature at the start of the game day; unit: degrees Celsius; clock: company date (day)."
+      - name: is_kept_operating_day
+        data_type: boolean
+        description: "True for each kept park-day row; unit: boolean; clock: game day."

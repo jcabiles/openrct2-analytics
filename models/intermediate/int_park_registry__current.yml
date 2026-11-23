@@ -1,0 +1,56 @@
+version: 2
+
+models:
+  - name: int_park_registry__current
+    description: >-
+      Answers which company start year and game year origin the registry states today for each park, so a game
+      date is turned into a company date with the park's latest word and an earlier, corrected value is not used.
+      Grain: one row per park, key park_id. The rows are the park's current delivery from the history model; a
+      delivery that restates a park replaces the earlier one here, and the earlier one stays in the history model.
+      Two rows for one park in the current delivery fail the key test, and a later delivery cures that. On the
+      rehearsal and company targets a singular test fails the build when a row's data_set is not the target's
+      name. The model has no unit; clock: wall-clock delivery date.
+    meta:
+      park_registry: current
+      expected_min_rows: 1
+    columns:
+      - name: park_id
+        description: "The park's identifier, the same text the plugin sends; one row per park; no unit; no clock."
+        data_tests:
+          - unique:
+              config:
+                severity: error
+          - not_null
+      - name: company_start_year
+        description: "Company calendar year of the park's first game year, as its current delivery states it; unit: year; clock: company date."
+      - name: game_year_origin
+        description: "Game year that counts as the park's first company year, as its current delivery states it; unit: game year; clock: game."
+      - name: data_set
+        description: "Data set the park belongs to, rehearsal or company; text; no unit; no clock."
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [rehearsal, company]
+      - name: note
+        description: "Free text from the current delivery, may be empty; no unit; no clock."
+      - name: delivered_on
+        description: "Calendar date of the current delivery as the row states it, no time; no unit; clock: wall-clock delivery date."
+      - name: delivery_file
+        description: "Path of the current delivery file as the folder was globbed, relative on dev and ci, absolute in a publish; text; no unit; no clock."
+      - name: valid_from
+        description: "First date the current delivery applies, the date in its file name, inclusive; no unit; clock: wall-clock delivery date."
+
+unit_tests:
+  - name: int_park_registry__current_returns_the_correction_row_only
+    description: It proves that given Park 2's first delivery and a later correction, the model returns only the correction's row.
+    model: int_park_registry__current
+    given:
+      - input: ref('int_park_registry__history')
+        format: sql
+        rows: |
+          select cast('park2' as varchar) as park_id, cast(2004 as integer) as company_start_year, cast(3 as integer) as game_year_origin, cast('rehearsal' as varchar) as data_set, cast('first' as varchar) as note, cast('2026-10-10' as date) as delivered_on, cast('data/park_registry_2026-10-10_01.csv' as varchar) as delivery_file, cast('2026-10-10' as date) as valid_from, cast('2026-10-12' as date) as valid_to, false as is_current
+          union all
+          select cast('park2' as varchar) as park_id, cast(2003 as integer) as company_start_year, cast(5 as integer) as game_year_origin, cast('rehearsal' as varchar) as data_set, cast('correction' as varchar) as note, cast('2026-10-12' as date) as delivered_on, cast('data/park_registry_2026-10-12_01.csv' as varchar) as delivery_file, cast('2026-10-12' as date) as valid_from, cast(null as date) as valid_to, true as is_current
+    expect:
+      rows:
+        - {park_id: park2, company_start_year: 2003, game_year_origin: 5, note: correction, valid_from: '2026-10-12'}

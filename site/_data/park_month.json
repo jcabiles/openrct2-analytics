@@ -1,0 +1,30 @@
+{
+  "name": "park_month",
+  "relation": "marts.fct_park_month",
+  "columns": [
+    "park_month_key",
+    "park_id",
+    "statement_company_date",
+    "operating_profit"
+  ],
+  "rows": [
+    {
+      "park_month_key": "k1792587321039-h8a4t4|9|0",
+      "park_id": "k1792587321039-h8a4t4",
+      "statement_company_date": "2000-03-01",
+      "operating_profit": 4073.60
+    },
+    {
+      "park_month_key": "k1792587321039-h8a4t4|9|1",
+      "park_id": "k1792587321039-h8a4t4",
+      "statement_company_date": "2000-04-01",
+      "operating_profit": 6649.90
+    },
+    {
+      "park_month_key": "k1792587321039-h8a4t4|9|2",
+      "park_id": "k1792587321039-h8a4t4",
+      "statement_company_date": "2000-05-01",
+      "operating_profit": 3393.70
+    }
+  ]
+}

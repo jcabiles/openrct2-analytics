@@ -1,0 +1,18 @@
+{
+  "name": "sample",
+  "relation": "marts.obt_park_year, marts.fct_park_day, staging.stg_session_start",
+  "columns": [
+    "data_set",
+    "parks",
+    "sessions",
+    "player_played"
+  ],
+  "rows": [
+    {
+      "data_set": "sample",
+      "parks": 1,
+      "sessions": 3,
+      "player_played": false
+    }
+  ]
+}

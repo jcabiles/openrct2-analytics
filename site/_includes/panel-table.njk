@@ -1,0 +1,12 @@
+{#- One live panel's table: the registry entry gives the caption, headers, rows and each row's cells. -#}
+{% macro panelTable(f) -%}
+<div class="tbl-wrap" tabindex="0" role="region" aria-label="{{ f.caption }}"><table id="{{ f.id }}-table" class="tbl plain">
+  <caption>{{ f.caption }}</caption>
+  <thead><tr>{% for header in f.headers %}<th scope="col">{{ header }}</th>{% endfor %}</tr></thead>
+  <tbody>
+    {%- for row in f.rows %}
+    <tr>{% for cell in f.cells(row) %}<td>{{ cell }}</td>{% endfor %}</tr>
+    {%- endfor %}
+  </tbody>
+</table></div>
+{%- endmacro %}

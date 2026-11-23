@@ -1,0 +1,122 @@
+[project]
+name = "openrct2-analytics"
+version = "0.1.0"
+description = "Portfolio analytics stack for a theme park run as a business, over OpenRCT2 events."
+requires-python = ">=3.12"
+# Hard pins, the newest stable dbt-core 1.x that resolves and installs with
+# the others (sandbox spike, 2026-09-27). dbt-core 1.12.x adds a
+# dbt-core-experimental-parser dependency whose build step fetches a
+# prebuilt wheel straight from a GitHub release, which fails to install in a
+# sandboxed build environment, so this pins the newest non-yanked 1.11.x
+# release instead (1.11.0 is yanked for dependency-bound issues). See
+# docs/adr/0004-dbt-core-1x-on-duckdb.md for why dbt stays on the 1.x line.
+dependencies = [
+    "dbt-core==1.11.15",
+    "dbt-duckdb==1.11.0",
+    "duckdb==1.5.6",
+    "datacontract-cli[duckdb,parquet]==1.2.2",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.6",
+    "mypy>=1.11",
+    "detect-secrets==1.5.0",
+    "sqlfluff==4.4.0",
+    "sqlfluff-templater-dbt==4.4.0",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+# Every `uv sync` uses uv's own managed Python. A venv built on another Python is torn down and
+# rebuilt on sync, which once left a checkout half-deleted; `make doctor` catches that damage.
+[tool.uv]
+python-preference = "only-managed"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests", "scripts"]
+
+[tool.ruff.lint]
+# Broad but sane: pyflakes, pycodestyle, isort, bugbear, comprehensions,
+# no-blind-except, pyupgrade, and simplify, plus the slop limits below.
+# Only rules that are stable in the locked ruff are selected; preview-only
+# rules (PLR0904 public methods, PLR0914 locals) stay off until they stabilize.
+select = [
+    "E", "F", "W", "I", "B", "C4", "BLE", "UP", "SIM",
+    "C90",      # cyclomatic complexity (limit in [tool.ruff.lint.mccabe])
+    "S110",     # try/except/pass swallows the error
+    "PLR0911",  # too many return statements
+    "PLR0912",  # too many branches
+    "PLR0913",  # too many arguments
+    "PLR0915",  # too many statements
+    "PLR0917",  # too many positional arguments
+    "PLR2004",  # magic number or string in a comparison
+    "PLW0603",  # `global` statement
+    "ANN",      # type annotations present; ANN401 also bans `Any` in signatures
+    "D",        # docstrings present and well-formed (convention below)
+]
+# Google style documents `__init__` arguments in the class docstring, and
+# dunder methods follow a protocol their name already states.
+ignore = ["D105", "D107"]
+
+[tool.ruff.lint.per-file-ignores]
+# Test names state the behavior, and expected values read best inline.
+"tests/**" = ["D", "PLR2004"]
+
+[tool.ruff.lint.flake8-bandit]
+# Without this, S110 flags only bare and `Exception` handlers, so a typed
+# `except ValueError: pass` would still swallow silently.
+check-typed-exception = true
+
+[tool.ruff.lint.mccabe]
+# mccabe's own default. The score counts independent paths, so 10 already
+# means 10 tests to cover every path; split the function instead of raising it.
+max-complexity = 10
+
+[tool.ruff.lint.pylint]
+# One above Pylint's default of 5, to leave room for an injected dependency;
+# past 6, group the values into a dataclass.
+max-args = 6
+# Past four positional values, call sites are easy to misorder without any
+# error; put the rest after `*` so callers must name them.
+max-positional-args = 4
+# Pylint's defaults for the three below. C90 usually fires first; these back
+# it up on long flat functions that mccabe scores low.
+max-branches = 12
+max-returns = 6
+max-statements = 50
+
+[tool.ruff.lint.pydocstyle]
+# The existing docstrings already use Google-style Args/Returns/Raises.
+convention = "google"
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unused_ignores = true
+warn_return_any = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+no_implicit_optional = true
+files = ["src", "tests", "scripts"]
+
+[[tool.mypy.overrides]]
+# fastjsonschema ships no type information; only tests/validator_cache.py and its tests use it.
+module = ["fastjsonschema"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+pythonpath = ["src", "scripts"]
+testpaths = ["tests"]
+addopts = "-ra"

@@ -1,0 +1,67 @@
+apiVersion: v3.2.0
+kind: DataContract
+id: guest_refused
+name: guest_refused
+version: 1.8.0
+status: active
+description:
+  purpose: One event per ride-refusal thought newly present at a daily guest check.
+servers:
+  - server: parquet_through_duckdb
+    type: duckdb
+    database: __DATABASE__
+    schema: main
+schema:
+  - name: guest_refused
+    physicalType: view
+    description: >-
+      One row per ride-refusal thought that was newly present at a daily guest check, sent by plugin 0.4.0 and
+      later. The data is Parquet (v1/guest_refused.parquet), checked through a throwaway DuckDB view. Day
+      resolution: a refusal that appears and expires within one game day is missed, and a repeat of a thought
+      still present is not sent again (the game refreshes an existing thought in place), so this undercounts
+      refusals. A seeded guest's thoughts held before the session started are not dated inside it. The event's
+      game date is the day of the check, not the moment of the refusal.
+    properties:
+      - name: guest_key
+        logicalType: integer
+        physicalType: INTEGER
+        required: true
+        logicalTypeOptions:
+          minimum: 1
+        description: >-
+          Minted by the plugin, unique within one session; the pair (session_id, guest_key) names a guest. A
+          whole number, no unit.
+      - name: guest_id
+        logicalType: integer
+        physicalType: INTEGER
+        required: true
+        logicalTypeOptions:
+          minimum: 0
+        description: >-
+          The game's guest entity slot number, a whole number; the game reuses a slot, so it is not an identity
+          (use guest_key).
+      - name: thought_type
+        logicalType: string
+        physicalType: VARCHAR
+        required: true
+        description: >-
+          The refusal thought's type, one of cant_afford_ride, bad_value, not_paying, intense, more_thrilling,
+          sickening, not_safe, queuing_ages or not_while_raining; text, no unit.
+      - name: ride_id
+        logicalType: integer
+        physicalType: INTEGER
+        required: true
+        logicalTypeOptions:
+          minimum: 0
+        description: >-
+          The refused ride's slot number, from the thought's item, for all nine types; a whole number. The game
+          reuses a ride slot after a ride is demolished, so it is not an identity by itself.
+    quality:
+      - type: sql
+        description: a guest key is at least 1
+        query: SELECT COUNT(*) FROM {object} WHERE guest_key < 1
+        mustBe: 0
+      - type: sql
+        description: the thought type is one of the nine refusal types
+        query: SELECT COUNT(*) FROM {object} WHERE thought_type NOT IN ('cant_afford_ride', 'bad_value', 'not_paying', 'intense', 'more_thrilling', 'sickening', 'not_safe', 'queuing_ages', 'not_while_raining')
+        mustBe: 0

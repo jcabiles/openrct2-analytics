@@ -1,0 +1,333 @@
+apiVersion: v3.2.0
+kind: DataContract
+id: ride_snapshot
+name: ride_snapshot
+version: 1.8.0
+status: active
+description:
+  purpose: Ride, stall and facility snapshot payload, one event per ride per work step.
+servers:
+  - server: parquet_through_duckdb
+    type: duckdb
+    database: __DATABASE__
+    schema: main
+schema:
+  - name: ride_snapshot
+    physicalType: view
+    description: >-
+      One row per ride, stall or facility per snapshot step; the plugin queues one step per ride each game day.
+      The data is Parquet (v1/ride_snapshot.parquet), checked through a throwaway DuckDB view. The key is the
+      session, the ride ID and the game tick, not the game date: a step can run on the tick the date changes, so two
+      snapshots of one ride can carry the same date but never the same tick. A ride ID is a slot the game reuses
+      after demolition, so the same ID in one session can be two different rides. Money is in tenths of a dollar
+      (game money unit). Placeholders are sent as read and listed per field: -1 for an unrated ride's three ratings,
+      1,275 for an unmeasured satisfaction, 255 for no item in shop_item and shop_item_secondary. Null means the
+      value was absent or outside plus or minus (2^53 - 1), which JSON cannot carry, or, for the ride statistics,
+      not finite (measurements) or not whole (counts). The 11 read statistics
+      (max_speed_mph to highest_drop_height_units) are expected to be 0 until the ride's first test run (expected
+      from the engine, not yet observed on a real newly built ride). inversion_count is counted from the track, not
+      from a test run, and is null in the cases its description lists; ride_category tells them apart.
+    properties:
+      - name: session_id
+        logicalType: string
+        physicalType: VARCHAR
+        required: true
+        primaryKey: true
+        primaryKeyPosition: 1
+        description: Plugin start identifier; text, no unit. Part of the key.
+      - name: ride_id
+        logicalType: integer
+        physicalType: INTEGER
+        required: true
+        primaryKey: true
+        primaryKeyPosition: 2
+        description: >-
+          The game's ride slot number, a whole number; the game reuses a slot after a ride is demolished, so it is not
+          an identity by itself. Part of the key.
+      - name: game_ticks_elapsed
+        logicalType: integer
+        physicalType: BIGINT
+        required: true
+        primaryKey: true
+        primaryKeyPosition: 3
+        description: >-
+          Game ticks since the park began, a count; game clock. The tick at which the snapshot step ran. Part of the
+          key.
+      - name: ride_name
+        logicalType: string
+        physicalType: VARCHAR
+        required: true
+        description: The ride's name when read; text, no unit. The player can rename a ride.
+      - name: ride_type
+        logicalType: integer
+        physicalType: INTEGER
+        required: true
+        description: The game's built-in ride type number; no unit.
+      - name: ride_object
+        logicalType: string
+        physicalType: VARCHAR
+        required: true
+        description: The ride's object identifier, for example rct2.ride.burgb; text, no unit.
+      - name: classification
+        logicalType: string
+        physicalType: VARCHAR
+        required: true
+        description: >-
+          What kind of ride it is: ride, stall or facility; text, no unit.
+      - name: status
+        logicalType: string
+        physicalType: VARCHAR
+        required: true
+        description: >-
+          Operating state when read: closed, open, testing or simulating; text, no unit.
+      - name: excitement_hundredths
+        logicalType: integer
+        physicalType: INTEGER
+        required: false
+        logicalTypeOptions:
+          minimum: -1
+        description: >-
+          Excitement rating in hundredths of a rating point (652 means 6.52); read when the snapshot step ran. An
+          unrated ride reads -1, sent as read.
+      - name: intensity_hundredths
+        logicalType: integer
+        physicalType: INTEGER
+        required: false
+        logicalTypeOptions:
+          minimum: -1
+        description: >-
+          Intensity rating in hundredths of a rating point (652 means 6.52); read when the snapshot step ran. An
+          unrated ride reads -1, sent as read.
+      - name: nausea_hundredths
+        logicalType: integer
+        physicalType: INTEGER
+        required: false
+        logicalTypeOptions:
+          minimum: -1
+        description: >-
+          Nausea rating in hundredths of a rating point (652 means 6.52); read when the snapshot step ran. An unrated
+          ride reads -1, sent as read.
+      - name: price_1_tenths
+        logicalType: integer
+        physicalType: BIGINT
+        required: false
+        description: >-
+          First price in tenths of a dollar (game money unit), read when the snapshot step ran: a ride's admission
+          price or a stall's first item price. Null when the ride's price list is shorter (an ATM's is empty).
+      - name: price_2_tenths
+        logicalType: integer
+        physicalType: BIGINT
+        required: false
+        description: >-
+          Second price in tenths of a dollar (game money unit), read when the snapshot step ran: a ride's photo price
+          or a stall's second item price. Null when the ride's price list is shorter (an ATM's is empty).
+      - name: shop_item
+        logicalType: integer
+        physicalType: INTEGER
+        required: false
+        description: The game's code for the first item a stall sells, as read; 255 means no item; no unit.
+      - name: shop_item_secondary
+        logicalType: integer
+        physicalType: INTEGER
+        required: false
+        description: The game's code for the second item a stall sells, as read; 255 means no item; no unit.
+      - name: total_customers
+        logicalType: integer
+        physicalType: BIGINT
+        required: true
+        description: Guests who have used the ride, a lifetime count when read; a reload can rewind it.
+      - name: build_date_months_elapsed
+        logicalType: integer
+        physicalType: INTEGER
+        required: true
+        description: The month the ride was built, as months elapsed since the park began; game calendar clock.
+      - name: age_months
+        logicalType: integer
+        physicalType: INTEGER
+        required: true
+        description: The ride's age in game months when read; game calendar clock.
+      - name: running_cost_per_fortnight_tenths
+        logicalType: integer
+        physicalType: BIGINT
+        required: false
+        description: >-
+          Running cost in tenths of a dollar (game money unit); the game's type definitions say it is billed every
+          fortnight, which is unverified. May be null: a value outside the safe JSON integer range is sent as null.
+      - name: total_profit_tenths
+        logicalType: integer
+        physicalType: BIGINT
+        required: false
+        description: >-
+          Lifetime profit in tenths of a dollar (game money unit) when read; may be negative. A value outside plus or
+          minus (2^53 - 1), such as a never-opened stall's, is sent as null.
+      - name: income_per_game_hour_tenths
+        logicalType: integer
+        physicalType: BIGINT
+        required: false
+        description: >-
+          Income in tenths of a dollar (game money unit) per game hour, the Finance tab's per-hour figure; the game's
+          own hour, not a wall-clock hour. A value outside plus or minus (2^53 - 1) is sent as null.
+      - name: profit_per_game_hour_tenths
+        logicalType: integer
+        physicalType: BIGINT
+        required: false
+        description: >-
+          Profit in tenths of a dollar (game money unit) per game hour, the Finance tab's per-hour figure; the game's
+          own hour, not a wall-clock hour; may be negative. A value outside plus or minus (2^53 - 1), such as a never-
+          opened stall's, is sent as null.
+      - name: value_tenths
+        logicalType: integer
+        physicalType: BIGINT
+        required: false
+        description: >-
+          The ride's value as the game reports it; the tenths-of-a-dollar unit is unverified (the engine compares it
+          with prices).
+      - name: reliability_pct
+        logicalType: integer
+        physicalType: INTEGER
+        required: false
+        description: Reliability as read, a percent; read when the snapshot step ran.
+      - name: downtime_pct
+        logicalType: integer
+        physicalType: INTEGER
+        required: false
+        description: Downtime as read, a percent; read when the snapshot step ran.
+      - name: satisfaction_pct
+        logicalType: integer
+        physicalType: INTEGER
+        required: false
+        description: Guest satisfaction as read, a percent; 1,275 means not yet measured, sent as read.
+      - name: guests_on_ride
+        logicalType: integer
+        physicalType: INTEGER
+        required: false
+        description: Guests on the ride when read, a count.
+      - name: station_count
+        logicalType: integer
+        physicalType: INTEGER
+        required: true
+        logicalTypeOptions:
+          minimum: 0
+        description: >-
+          Station slots in use when read, a count: the game always returns 255 slots and a slot is in use when its
+          start is set.
+      - name: queue_time_max_minutes
+        logicalType: integer
+        physicalType: INTEGER
+        required: false
+        description: The largest queue time among the used stations, in minutes; null when no station is used.
+      - name: max_speed_mph
+        logicalType: number
+        physicalType: DOUBLE
+        required: false
+        description: >-
+          Highest speed of the ride's test or running laps, in miles per hour as the game reports it to
+          plugins (not yet checked against the game's ride window); expected to be zero until the ride's first
+          test run; game clock: the tick the snapshot step ran; absent in events from plugins before 0.5.0.
+      - name: average_speed_mph
+        logicalType: number
+        physicalType: DOUBLE
+        required: false
+        description: >-
+          Average speed of the ride, in miles per hour as the game reports it to plugins (not yet checked
+          against the game's ride window); expected to be zero until the ride's first test run; game clock:
+          the tick the snapshot step ran; absent in events from plugins before 0.5.0.
+      - name: ride_time_seconds
+        logicalType: number
+        physicalType: DOUBLE
+        required: false
+        description: >-
+          Time one lap takes, in seconds of ride time; expected to be zero until the ride's first test run;
+          game clock: the tick the snapshot step ran; absent in events from plugins before 0.5.0.
+      - name: ride_length_meters
+        logicalType: number
+        physicalType: DOUBLE
+        required: false
+        description: >-
+          Length of the ride's track, in metres; expected to be zero until the ride's first test run; game
+          clock: the tick the snapshot step ran; absent in events from plugins before 0.5.0.
+      - name: max_positive_vertical_g
+        logicalType: number
+        physicalType: DOUBLE
+        required: false
+        description: >-
+          Highest positive vertical force, in g (multiples of gravity), scale as reported and unverified;
+          expected to be zero until the ride's first test run; game clock: the tick the snapshot step ran;
+          absent in events from plugins before 0.5.0.
+      - name: max_negative_vertical_g
+        logicalType: number
+        physicalType: DOUBLE
+        required: false
+        description: >-
+          Highest negative vertical force, in g (multiples of gravity), scale as reported and unverified;
+          expected to be zero until the ride's first test run; game clock: the tick the snapshot step ran;
+          absent in events from plugins before 0.5.0.
+      - name: max_lateral_g
+        logicalType: number
+        physicalType: DOUBLE
+        required: false
+        description: >-
+          Highest sideways force, in g (multiples of gravity), scale as reported and unverified; expected to
+          be zero until the ride's first test run; game clock: the tick the snapshot step ran; absent in
+          events from plugins before 0.5.0.
+      - name: total_air_time_seconds
+        logicalType: number
+        physicalType: DOUBLE
+        required: false
+        description: >-
+          Total time riders spend in the air, in seconds of air time; expected to be zero until the ride's
+          first test run; game clock: the tick the snapshot step ran; absent in events from plugins before
+          0.5.0.
+      - name: drop_count
+        logicalType: integer
+        physicalType: INTEGER
+        required: false
+        description: >-
+          Number of drops on the track, a count; expected to be zero until the ride's first test run; game
+          clock: the tick the snapshot step ran; absent in events from plugins before 0.5.0.
+      - name: lift_hill_count
+        logicalType: integer
+        physicalType: INTEGER
+        required: false
+        description: >-
+          Number of lift hills on the track, a count; expected to be zero until the ride's first test run;
+          game clock: the tick the snapshot step ran; absent in events from plugins before 0.5.0.
+      - name: highest_drop_height_units
+        logicalType: number
+        physicalType: DOUBLE
+        required: false
+        description: >-
+          Height of the highest drop, in the game's height units (not metres or feet); expected to be zero
+          until the ride's first test run; game clock: the tick the snapshot step ran; absent in events from
+          plugins before 0.5.0.
+      - name: inversion_count
+        logicalType: integer
+        physicalType: INTEGER
+        required: false
+        description: >-
+          Number of inversions counted by walking the built track (not from a test run), a count; so a finished but
+          untested coaster can carry a non-zero count while the read statistics are zero. Null in these cases, told
+          apart by ride_category: ride_category null (the ride's type is in neither research list, so it was not
+          looked at); ride_category other than rollercoaster (not counted by design); ride_category rollercoaster (the
+          walk failed: the 5,000-step cap was reached, no station was in use, no track element was found at the
+          station, or the game returned a null iterator or segment). Game clock: the tick the snapshot step ran;
+          absent in events from plugins before 0.5.0.
+      - name: ride_category
+        logicalType: string
+        physicalType: VARCHAR
+        required: false
+        description: >-
+          The game's research category of the ride's type (for example rollercoaster), read once per session from the
+          invented and uninvented research lists; text, no unit; null when the type is in neither list. Game clock:
+          the tick the snapshot step ran. The category table itself is read once per session, at the session's first
+          ride_list step, and each snapshot looks the ride's type up in it; absent in events from plugins before 0.5.0.
+    quality:
+      - type: sql
+        description: classification is ride, stall or facility
+        query: SELECT COUNT(*) FROM {object} WHERE classification NOT IN ('ride', 'stall', 'facility')
+        mustBe: 0
+      - type: sql
+        description: status is closed, open, testing or simulating
+        query: >-
+          SELECT COUNT(*) FROM {object} WHERE status NOT IN ('closed', 'open', 'testing', 'simulating')
+        mustBe: 0

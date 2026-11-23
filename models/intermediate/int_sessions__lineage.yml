@@ -1,0 +1,838 @@
+version: 2
+
+models:
+  - name: int_sessions__lineage
+    description: >-
+      Answers which play sessions, and which part of each, are on the kept timeline after saves and reloads, so a
+      later model can keep the events of the timeline the park actually followed and drop play that a reload
+      abandoned. Grain: one row per session_id seen in stg_envelope, key session_id. Each session gets a load status
+      and a parent; sessions form trees (a root, or the orphans of one park and one loaded save), each tree's most
+      recently started session is its frontier, and the frontier with its ancestors is the kept path. Each kept-path
+      session is cut at the save its kept-path child loaded, or, for a frontier, at its own last landed save; its
+      events before the cut are kept. These labels change between builds when a later session starts, because the
+      kept path follows the most recently started session; nothing is stored between builds. A session in a parent
+      loop has a null tree_root_session_id, which a not_null test fails. The model has no unit; no clock, except
+      session_started_at (wall clock, UTC) and the kept game ticks (game clock).
+    meta:
+      expected_min_rows: 1
+    columns:
+      - name: session_id
+        description: "Plugin start identifier of the session; key; text; no unit; no clock."
+        data_tests: [unique, not_null]
+      - name: park_id
+        description: "The park's identifier, the same text the plugin sends; no unit; no clock."
+        data_tests: [not_null]
+      - name: first_seq_is_one
+        description: "True when the session's least landed seq is 1, false when its first events never landed; no unit; no clock."
+        data_tests: [not_null]
+      - name: has_session_start
+        description: "True when the session's session_start event landed; no unit; no clock."
+        data_tests: [not_null]
+      - name: session_started_at
+        description: "The session_start emitted_at; null without a session_start; no unit; clock: wall clock (UTC)."
+      - name: loaded_save_id
+        description: "Identifier of the save the session loaded, from session_start; null for a new game or without a session_start; text; no unit; no clock."
+      - name: load_status
+        description: "root (no loaded save), loaded (the loaded save's save_written landed), estimated (no save_written, but the writing session is in the data with a seq floor and waiting count) or orphan (otherwise); the first that applies in that order; text; no unit; no clock."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [root, loaded, estimated, orphan]
+      - name: parent_session_id
+        description: "The session that wrote the loaded save; null for root and orphan; text; no unit; no clock."
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('int_sessions__lineage')
+                field: session_id
+      - name: tree_root_session_id
+        description: "The tree's root session, or for a tree of orphans of one park and one loaded save their earliest-started orphan (which can itself be off the kept path); null only for a session in a parent loop; text; no unit; no clock."
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('int_sessions__lineage')
+                field: session_id
+      - name: is_frontier
+        description: "True for the most recently started session of its tree (a session with no session_start sorts first, equal start times go to the greater session_id); false for every other session, including one in a parent loop; no unit; no clock."
+        data_tests: [not_null]
+      - name: is_on_kept_path
+        description: "True for a frontier and each of its ancestors. A session on the kept path can still hold abandoned events after its cut, so consumers label events only through the timeline_status macro, never from this column; no unit; no clock."
+        data_tests: [not_null]
+      - name: continued_by_session_id
+        description: "The session's child on the kept path; null for a frontier and off the kept path; text; no unit; no clock."
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('int_sessions__lineage')
+                field: session_id
+      - name: cut_seq
+        description: "The session's cut: the seq of the save its kept-path child loaded (estimated as floor plus waiting plus one when that save's save_written is lost), or for a frontier the seq of its own last landed save_written; events with seq below it are kept; null off the kept path or for a frontier with no landed save; unit: count; no clock (session order, not a time)."
+      - name: cut_is_estimated
+        description: "True when cut_seq was estimated from a lost save's floor and waiting count; null when cut_seq is null; no unit; no clock."
+      - name: first_kept_game_ticks
+        description: "Least game_ticks_elapsed of the session's events with seq below cut_seq; null without a kept event; unit: game tick; clock: game."
+      - name: last_kept_game_ticks
+        description: "Greatest game_ticks_elapsed of the session's events with seq below cut_seq; null without a kept event; unit: game tick; clock: game."
+      - name: overlaps_kept_session_id
+        description: "The least session_id of another kept-path session of the same park whose kept ticks overlap this session's (each range's first kept tick strictly below the other's last); null when none; a singular test fails the build on any value; text; no unit; no clock."
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('int_sessions__lineage')
+                field: session_id
+
+unit_tests:
+  - name: int_sessions__lineage_u1_straight_chain_of_three
+    description: >-
+      It proves that in a straight chain of three sessions (sp a root, sa loading sp's save at seq 20, sc loading sa's
+      save at seq 30), all three are on the kept path in one tree rooted at sp, the first two are cut at the save the
+      next one loaded (sa at 30, not its own later save at 45; sa's floor plus waiting plus one is 19, so a loaded cut
+      comes from the save's seq), the third is the frontier cut at its own last save (25, not 15) although sp has the
+      greatest session_id, cut_is_estimated is false on all three, and the kept ticks stop before each cut.
+    model: int_sessions__lineage
+    given:
+      - input: ref('stg_envelope')
+        format: sql
+        rows: |
+          select cast('sp' as varchar) as session_id, cast('park1' as varchar) as park_id, cast(1 as bigint) as seq, cast(1000 as bigint) as game_ticks_elapsed
+          union all
+          select cast('sp' as varchar), cast('park1' as varchar), cast(10 as bigint), cast(1100 as bigint)
+          union all
+          select cast('sp' as varchar), cast('park1' as varchar), cast(20 as bigint), cast(1200 as bigint)
+          union all
+          select cast('sp' as varchar), cast('park1' as varchar), cast(21 as bigint), cast(1210 as bigint)
+          union all
+          select cast('sa' as varchar), cast('park1' as varchar), cast(1 as bigint), cast(1201 as bigint)
+          union all
+          select cast('sa' as varchar), cast('park1' as varchar), cast(10 as bigint), cast(1300 as bigint)
+          union all
+          select cast('sa' as varchar), cast('park1' as varchar), cast(30 as bigint), cast(1400 as bigint)
+          union all
+          select cast('sa' as varchar), cast('park1' as varchar), cast(45 as bigint), cast(1500 as bigint)
+          union all
+          select cast('sc' as varchar), cast('park1' as varchar), cast(1 as bigint), cast(1401 as bigint)
+          union all
+          select cast('sc' as varchar), cast('park1' as varchar), cast(15 as bigint), cast(1450 as bigint)
+          union all
+          select cast('sc' as varchar), cast('park1' as varchar), cast(25 as bigint), cast(1480 as bigint)
+          union all
+          select cast('sc' as varchar), cast('park1' as varchar), cast(26 as bigint), cast(1490 as bigint)
+      - input: ref('stg_session_start')
+        format: sql
+        rows: |
+          select cast('sp' as varchar) as session_id, cast('2026-10-01 09:00:00+00' as timestamp with time zone) as emitted_at, cast(null as varchar) as loaded_save_id, cast(null as varchar) as loaded_save_session_id, cast(null as bigint) as loaded_save_seq_floor, cast(null as integer) as loaded_save_lines_waiting
+          union all
+          select cast('sa' as varchar), cast('2026-10-01 10:00:00+00' as timestamp with time zone), cast('vp20' as varchar), cast('sp' as varchar), cast(17 as bigint), cast(1 as integer)
+          union all
+          select cast('sc' as varchar), cast('2026-10-01 11:00:00+00' as timestamp with time zone), cast('va30' as varchar), cast('sa' as varchar), cast(29 as bigint), cast(0 as integer)
+      - input: ref('stg_save_written')
+        format: sql
+        rows: |
+          select cast('vp20' as varchar) as save_id, cast('sp' as varchar) as session_id, cast(20 as bigint) as seq
+          union all
+          select cast('va30' as varchar), cast('sa' as varchar), cast(30 as bigint)
+          union all
+          select cast('va45' as varchar), cast('sa' as varchar), cast(45 as bigint)
+          union all
+          select cast('vc15' as varchar), cast('sc' as varchar), cast(15 as bigint)
+          union all
+          select cast('vc25' as varchar), cast('sc' as varchar), cast(25 as bigint)
+    expect:
+      rows:
+        - {session_id: sa, park_id: park1, first_seq_is_one: true, has_session_start: true, session_started_at: '2026-10-01 10:00:00+00', loaded_save_id: vp20, load_status: loaded, parent_session_id: sp, tree_root_session_id: sp, is_frontier: false, is_on_kept_path: true, continued_by_session_id: sc, cut_seq: 30, cut_is_estimated: false, first_kept_game_ticks: 1201, last_kept_game_ticks: 1300, overlaps_kept_session_id: null}
+        - {session_id: sc, park_id: park1, first_seq_is_one: true, has_session_start: true, session_started_at: '2026-10-01 11:00:00+00', loaded_save_id: va30, load_status: loaded, parent_session_id: sa, tree_root_session_id: sp, is_frontier: true, is_on_kept_path: true, continued_by_session_id: null, cut_seq: 25, cut_is_estimated: false, first_kept_game_ticks: 1401, last_kept_game_ticks: 1450, overlaps_kept_session_id: null}
+        - {session_id: sp, park_id: park1, first_seq_is_one: true, has_session_start: true, session_started_at: '2026-10-01 09:00:00+00', loaded_save_id: null, load_status: root, parent_session_id: null, tree_root_session_id: sp, is_frontier: false, is_on_kept_path: true, continued_by_session_id: sa, cut_seq: 20, cut_is_estimated: false, first_kept_game_ticks: 1000, last_kept_game_ticks: 1100, overlaps_kept_session_id: null}
+
+  - name: int_sessions__lineage_u2_fork_later_start_wins
+    description: >-
+      It proves that when sb and sc both load sa's save at seq 20, the later session_start emitted_at wins even though
+      it belongs to the smaller session_id and received_at runs the opposite way: sb is the frontier and on the kept
+      path with sa, sa is cut at 20 and continued by sb, and sc is off the kept path with null cut and tick columns. A
+      frontier ordered by session_id or by received_at picks sc and fails.
+    model: int_sessions__lineage
+    given:
+      - input: ref('stg_envelope')
+        format: sql
+        rows: |
+          select cast('sa' as varchar) as session_id, cast('park1' as varchar) as park_id, cast(1 as bigint) as seq, cast(1000 as bigint) as game_ticks_elapsed
+          union all
+          select cast('sa' as varchar), cast('park1' as varchar), cast(10 as bigint), cast(1100 as bigint)
+          union all
+          select cast('sa' as varchar), cast('park1' as varchar), cast(20 as bigint), cast(1200 as bigint)
+          union all
+          select cast('sb' as varchar), cast('park1' as varchar), cast(1 as bigint), cast(1201 as bigint)
+          union all
+          select cast('sb' as varchar), cast('park1' as varchar), cast(8 as bigint), cast(1260 as bigint)
+          union all
+          select cast('sb' as varchar), cast('park1' as varchar), cast(12 as bigint), cast(1300 as bigint)
+          union all
+          select cast('sc' as varchar), cast('park1' as varchar), cast(1 as bigint), cast(1202 as bigint)
+          union all
+          select cast('sc' as varchar), cast('park1' as varchar), cast(9 as bigint), cast(1270 as bigint)
+          union all
+          select cast('sc' as varchar), cast('park1' as varchar), cast(14 as bigint), cast(1310 as bigint)
+      - input: ref('stg_session_start')
+        format: sql
+        rows: |
+          select cast('sa' as varchar) as session_id, cast('2026-10-01 09:00:00+00' as timestamp with time zone) as emitted_at, cast('2026-10-01 09:01:00+00' as timestamp with time zone) as received_at, cast(null as varchar) as loaded_save_id, cast(null as varchar) as loaded_save_session_id, cast(null as bigint) as loaded_save_seq_floor, cast(null as integer) as loaded_save_lines_waiting
+          union all
+          select cast('sb' as varchar), cast('2026-10-01 11:00:00+00' as timestamp with time zone), cast('2026-10-01 11:05:00+00' as timestamp with time zone), cast('va20' as varchar), cast('sa' as varchar), cast(19 as bigint), cast(0 as integer)
+          union all
+          select cast('sc' as varchar), cast('2026-10-01 10:00:00+00' as timestamp with time zone), cast('2026-10-01 11:10:00+00' as timestamp with time zone), cast('va20' as varchar), cast('sa' as varchar), cast(18 as bigint), cast(1 as integer)
+      - input: ref('stg_save_written')
+        format: sql
+        rows: |
+          select cast('va20' as varchar) as save_id, cast('sa' as varchar) as session_id, cast(20 as bigint) as seq
+          union all
+          select cast('vb12' as varchar), cast('sb' as varchar), cast(12 as bigint)
+          union all
+          select cast('vc14' as varchar), cast('sc' as varchar), cast(14 as bigint)
+    expect:
+      rows:
+        - {session_id: sa, park_id: park1, first_seq_is_one: true, has_session_start: true, session_started_at: '2026-10-01 09:00:00+00', loaded_save_id: null, load_status: root, parent_session_id: null, tree_root_session_id: sa, is_frontier: false, is_on_kept_path: true, continued_by_session_id: sb, cut_seq: 20, cut_is_estimated: false, first_kept_game_ticks: 1000, last_kept_game_ticks: 1100, overlaps_kept_session_id: null}
+        - {session_id: sb, park_id: park1, first_seq_is_one: true, has_session_start: true, session_started_at: '2026-10-01 11:00:00+00', loaded_save_id: va20, load_status: loaded, parent_session_id: sa, tree_root_session_id: sa, is_frontier: true, is_on_kept_path: true, continued_by_session_id: null, cut_seq: 12, cut_is_estimated: false, first_kept_game_ticks: 1201, last_kept_game_ticks: 1260, overlaps_kept_session_id: null}
+        - {session_id: sc, park_id: park1, first_seq_is_one: true, has_session_start: true, session_started_at: '2026-10-01 10:00:00+00', loaded_save_id: va20, load_status: loaded, parent_session_id: sa, tree_root_session_id: sa, is_frontier: false, is_on_kept_path: false, continued_by_session_id: null, cut_seq: null, cut_is_estimated: null, first_kept_game_ticks: null, last_kept_game_ticks: null, overlaps_kept_session_id: null}
+
+  - name: int_sessions__lineage_u3_emitted_at_tie_goes_to_greater_session_id
+    description: >-
+      It proves that when sb and sc load sa's save and their session_start emitted_at values are equal to the
+      millisecond, the greater session_id (sc) is the frontier and on the kept path, sa is cut at the save sc loaded,
+      and sb is off the kept path.
+    model: int_sessions__lineage
+    given:
+      - input: ref('stg_envelope')
+        format: sql
+        rows: |
+          select cast('sa' as varchar) as session_id, cast('park1' as varchar) as park_id, cast(1 as bigint) as seq, cast(1000 as bigint) as game_ticks_elapsed
+          union all
+          select cast('sa' as varchar), cast('park1' as varchar), cast(10 as bigint), cast(1100 as bigint)
+          union all
+          select cast('sa' as varchar), cast('park1' as varchar), cast(20 as bigint), cast(1200 as bigint)
+          union all
+          select cast('sb' as varchar), cast('park1' as varchar), cast(1 as bigint), cast(1201 as bigint)
+          union all
+          select cast('sb' as varchar), cast('park1' as varchar), cast(6 as bigint), cast(1240 as bigint)
+          union all
+          select cast('sb' as varchar), cast('park1' as varchar), cast(11 as bigint), cast(1290 as bigint)
+          union all
+          select cast('sc' as varchar), cast('park1' as varchar), cast(1 as bigint), cast(1202 as bigint)
+          union all
+          select cast('sc' as varchar), cast('park1' as varchar), cast(5 as bigint), cast(1250 as bigint)
+          union all
+          select cast('sc' as varchar), cast('park1' as varchar), cast(9 as bigint), cast(1280 as bigint)
+      - input: ref('stg_session_start')
+        format: sql
+        rows: |
+          select cast('sa' as varchar) as session_id, cast('2026-10-01 09:00:00+00' as timestamp with time zone) as emitted_at, cast(null as varchar) as loaded_save_id, cast(null as varchar) as loaded_save_session_id, cast(null as bigint) as loaded_save_seq_floor, cast(null as integer) as loaded_save_lines_waiting
+          union all
+          select cast('sb' as varchar), cast('2026-10-01 10:00:00+00' as timestamp with time zone), cast('va20' as varchar), cast('sa' as varchar), cast(19 as bigint), cast(0 as integer)
+          union all
+          select cast('sc' as varchar), cast('2026-10-01 10:00:00+00' as timestamp with time zone), cast('va20' as varchar), cast('sa' as varchar), cast(18 as bigint), cast(1 as integer)
+      - input: ref('stg_save_written')
+        format: sql
+        rows: |
+          select cast('va20' as varchar) as save_id, cast('sa' as varchar) as session_id, cast(20 as bigint) as seq
+          union all
+          select cast('vb11' as varchar), cast('sb' as varchar), cast(11 as bigint)
+          union all
+          select cast('vc9' as varchar), cast('sc' as varchar), cast(9 as bigint)
+    expect:
+      rows:
+        - {session_id: sa, park_id: park1, first_seq_is_one: true, has_session_start: true, session_started_at: '2026-10-01 09:00:00+00', loaded_save_id: null, load_status: root, parent_session_id: null, tree_root_session_id: sa, is_frontier: false, is_on_kept_path: true, continued_by_session_id: sc, cut_seq: 20, cut_is_estimated: false, first_kept_game_ticks: 1000, last_kept_game_ticks: 1100, overlaps_kept_session_id: null}
+        - {session_id: sb, park_id: park1, first_seq_is_one: true, has_session_start: true, session_started_at: '2026-10-01 10:00:00+00', loaded_save_id: va20, load_status: loaded, parent_session_id: sa, tree_root_session_id: sa, is_frontier: false, is_on_kept_path: false, continued_by_session_id: null, cut_seq: null, cut_is_estimated: null, first_kept_game_ticks: null, last_kept_game_ticks: null, overlaps_kept_session_id: null}
+        - {session_id: sc, park_id: park1, first_seq_is_one: true, has_session_start: true, session_started_at: '2026-10-01 10:00:00+00', loaded_save_id: va20, load_status: loaded, parent_session_id: sa, tree_root_session_id: sa, is_frontier: true, is_on_kept_path: true, continued_by_session_id: null, cut_seq: 9, cut_is_estimated: false, first_kept_game_ticks: 1202, last_kept_game_ticks: 1250, overlaps_kept_session_id: null}
+
+  - name: int_sessions__lineage_u4_two_saves_of_one_parent_later_start_sets_the_cut
+    description: >-
+      It proves that when sa saves at seq 20 and 40, sc loads the seq 40 save and starts at 10:00, and sb loads the
+      seq 20 save and starts at 11:00, sb is the frontier, sa's cut_seq is 20 (the lower cut) with
+      continued_by_session_id sb, and sc is off the kept path. A model that takes the highest cut, or cuts a
+      non-frontier session at its own last save, gives 40 and fails.
+    model: int_sessions__lineage
+    given:
+      - input: ref('stg_envelope')
+        format: sql
+        rows: |
+          select cast('sa' as varchar) as session_id, cast('park1' as varchar) as park_id, cast(1 as bigint) as seq, cast(1000 as bigint) as game_ticks_elapsed
+          union all
+          select cast('sa' as varchar), cast('park1' as varchar), cast(10 as bigint), cast(1100 as bigint)
+          union all
+          select cast('sa' as varchar), cast('park1' as varchar), cast(20 as bigint), cast(1200 as bigint)
+          union all
+          select cast('sa' as varchar), cast('park1' as varchar), cast(30 as bigint), cast(1300 as bigint)
+          union all
+          select cast('sa' as varchar), cast('park1' as varchar), cast(40 as bigint), cast(1400 as bigint)
+          union all
+          select cast('sb' as varchar), cast('park1' as varchar), cast(1 as bigint), cast(1201 as bigint)
+          union all
+          select cast('sb' as varchar), cast('park1' as varchar), cast(6 as bigint), cast(1250 as bigint)
+          union all
+          select cast('sb' as varchar), cast('park1' as varchar), cast(11 as bigint), cast(1280 as bigint)
+          union all
+          select cast('sc' as varchar), cast('park1' as varchar), cast(1 as bigint), cast(1401 as bigint)
+          union all
+          select cast('sc' as varchar), cast('park1' as varchar), cast(7 as bigint), cast(1450 as bigint)
+          union all
+          select cast('sc' as varchar), cast('park1' as varchar), cast(13 as bigint), cast(1480 as bigint)
+      - input: ref('stg_session_start')
+        format: sql
+        rows: |
+          select cast('sa' as varchar) as session_id, cast('2026-10-01 09:00:00+00' as timestamp with time zone) as emitted_at, cast(null as varchar) as loaded_save_id, cast(null as varchar) as loaded_save_session_id, cast(null as bigint) as loaded_save_seq_floor, cast(null as integer) as loaded_save_lines_waiting
+          union all
+          select cast('sb' as varchar), cast('2026-10-01 11:00:00+00' as timestamp with time zone), cast('va20' as varchar), cast('sa' as varchar), cast(19 as bigint), cast(0 as integer)
+          union all
+          select cast('sc' as varchar), cast('2026-10-01 10:00:00+00' as timestamp with time zone), cast('va40' as varchar), cast('sa' as varchar), cast(38 as bigint), cast(1 as integer)
+      - input: ref('stg_save_written')
+        format: sql
+        rows: |
+          select cast('va20' as varchar) as save_id, cast('sa' as varchar) as session_id, cast(20 as bigint) as seq
+          union all
+          select cast('va40' as varchar), cast('sa' as varchar), cast(40 as bigint)
+          union all
+          select cast('vb11' as varchar), cast('sb' as varchar), cast(11 as bigint)
+          union all
+          select cast('vc13' as varchar), cast('sc' as varchar), cast(13 as bigint)
+    expect:
+      rows:
+        - {session_id: sa, park_id: park1, first_seq_is_one: true, has_session_start: true, session_started_at: '2026-10-01 09:00:00+00', loaded_save_id: null, load_status: root, parent_session_id: null, tree_root_session_id: sa, is_frontier: false, is_on_kept_path: true, continued_by_session_id: sb, cut_seq: 20, cut_is_estimated: false, first_kept_game_ticks: 1000, last_kept_game_ticks: 1100, overlaps_kept_session_id: null}
+        - {session_id: sb, park_id: park1, first_seq_is_one: true, has_session_start: true, session_started_at: '2026-10-01 11:00:00+00', loaded_save_id: va20, load_status: loaded, parent_session_id: sa, tree_root_session_id: sa, is_frontier: true, is_on_kept_path: true, continued_by_session_id: null, cut_seq: 11, cut_is_estimated: false, first_kept_game_ticks: 1201, last_kept_game_ticks: 1250, overlaps_kept_session_id: null}
+        - {session_id: sc, park_id: park1, first_seq_is_one: true, has_session_start: true, session_started_at: '2026-10-01 10:00:00+00', loaded_save_id: va40, load_status: loaded, parent_session_id: sa, tree_root_session_id: sa, is_frontier: false, is_on_kept_path: false, continued_by_session_id: null, cut_seq: null, cut_is_estimated: null, first_kept_game_ticks: null, last_kept_game_ticks: null, overlaps_kept_session_id: null}
+
+  - name: int_sessions__lineage_u5_grandchild_moves_the_kept_path_to_the_earlier_child
+    description: >-
+      It proves that when sa's children are sc (loads the seq 20 save, starts 10:00) and se (loads the seq 40 save,
+      starts 11:00), and the grandchild sb loads sc's save and starts 12:00, sb is the frontier, the kept path is sa,
+      sc, sb, sa is cut at the save sc loaded (20) and sc at the save sb loaded (15), and se is off the kept path.
+    model: int_sessions__lineage
+    given:
+      - input: ref('stg_envelope')
+        format: sql
+        rows: |
+          select cast('sa' as varchar) as session_id, cast('park1' as varchar) as park_id, cast(1 as bigint) as seq, cast(1000 as bigint) as game_ticks_elapsed
+          union all
+          select cast('sa' as varchar), cast('park1' as varchar), cast(10 as bigint), cast(1100 as bigint)
+          union all
+          select cast('sa' as varchar), cast('park1' as varchar), cast(20 as bigint), cast(1200 as bigint)
+          union all
+          select cast('sa' as varchar), cast('park1' as varchar), cast(40 as bigint), cast(1400 as bigint)
+          union all
+          select cast('sc' as varchar), cast('park1' as varchar), cast(1 as bigint), cast(1201 as bigint)
+          union all
+          select cast('sc' as varchar), cast('park1' as varchar), cast(10 as bigint), cast(1260 as bigint)
+          union all
+          select cast('sc' as varchar), cast('park1' as varchar), cast(15 as bigint), cast(1300 as bigint)
+          union all
+          select cast('se' as varchar), cast('park1' as varchar), cast(1 as bigint), cast(1401 as bigint)
+          union all
+          select cast('se' as varchar), cast('park1' as varchar), cast(9 as bigint), cast(1450 as bigint)
+          union all
+          select cast('se' as varchar), cast('park1' as varchar), cast(12 as bigint), cast(1480 as bigint)
+          union all
+          select cast('sb' as varchar), cast('park1' as varchar), cast(1 as bigint), cast(1301 as bigint)
+          union all
+          select cast('sb' as varchar), cast('park1' as varchar), cast(8 as bigint), cast(1350 as bigint)
+          union all
+          select cast('sb' as varchar), cast('park1' as varchar), cast(11 as bigint), cast(1380 as bigint)
+      - input: ref('stg_session_start')
+        format: sql
+        rows: |
+          select cast('sa' as varchar) as session_id, cast('2026-10-01 09:00:00+00' as timestamp with time zone) as emitted_at, cast(null as varchar) as loaded_save_id, cast(null as varchar) as loaded_save_session_id, cast(null as bigint) as loaded_save_seq_floor, cast(null as integer) as loaded_save_lines_waiting
+          union all
+          select cast('sc' as varchar), cast('2026-10-01 10:00:00+00' as timestamp with time zone), cast('va20' as varchar), cast('sa' as varchar), cast(19 as bigint), cast(0 as integer)
+          union all
+          select cast('se' as varchar), cast('2026-10-01 11:00:00+00' as timestamp with time zone), cast('va40' as varchar), cast('sa' as varchar), cast(38 as bigint), cast(1 as integer)
+          union all
+          select cast('sb' as varchar), cast('2026-10-01 12:00:00+00' as timestamp with time zone), cast('vc15' as varchar), cast('sc' as varchar), cast(14 as bigint), cast(0 as integer)
+      - input: ref('stg_save_written')
+        format: sql
+        rows: |
+          select cast('va20' as varchar) as save_id, cast('sa' as varchar) as session_id, cast(20 as bigint) as seq
+          union all
+          select cast('va40' as varchar), cast('sa' as varchar), cast(40 as bigint)
+          union all
+          select cast('vc15' as varchar), cast('sc' as varchar), cast(15 as bigint)
+          union all
+          select cast('ve12' as varchar), cast('se' as varchar), cast(12 as bigint)
+          union all
+          select cast('vb11' as varchar), cast('sb' as varchar), cast(11 as bigint)
+    expect:
+      rows:
+        - {session_id: sa, park_id: park1, first_seq_is_one: true, has_session_start: true, session_started_at: '2026-10-01 09:00:00+00', loaded_save_id: null, load_status: root, parent_session_id: null, tree_root_session_id: sa, is_frontier: false, is_on_kept_path: true, continued_by_session_id: sc, cut_seq: 20, cut_is_estimated: false, first_kept_game_ticks: 1000, last_kept_game_ticks: 1100, overlaps_kept_session_id: null}
+        - {session_id: sb, park_id: park1, first_seq_is_one: true, has_session_start: true, session_started_at: '2026-10-01 12:00:00+00', loaded_save_id: vc15, load_status: loaded, parent_session_id: sc, tree_root_session_id: sa, is_frontier: true, is_on_kept_path: true, continued_by_session_id: null, cut_seq: 11, cut_is_estimated: false, first_kept_game_ticks: 1301, last_kept_game_ticks: 1350, overlaps_kept_session_id: null}
+        - {session_id: sc, park_id: park1, first_seq_is_one: true, has_session_start: true, session_started_at: '2026-10-01 10:00:00+00', loaded_save_id: va20, load_status: loaded, parent_session_id: sa, tree_root_session_id: sa, is_frontier: false, is_on_kept_path: true, continued_by_session_id: sb, cut_seq: 15, cut_is_estimated: false, first_kept_game_ticks: 1201, last_kept_game_ticks: 1260, overlaps_kept_session_id: null}
+        - {session_id: se, park_id: park1, first_seq_is_one: true, has_session_start: true, session_started_at: '2026-10-01 11:00:00+00', loaded_save_id: va40, load_status: loaded, parent_session_id: sa, tree_root_session_id: sa, is_frontier: false, is_on_kept_path: false, continued_by_session_id: null, cut_seq: null, cut_is_estimated: null, first_kept_game_ticks: null, last_kept_game_ticks: null, overlaps_kept_session_id: null}
+
+  - name: int_sessions__lineage_u6_lost_save_gives_an_estimated_cut
+    description: >-
+      It proves that when sb loads a save of sa that has no save_written row, with floor 40 and waiting 2, sb is
+      estimated with parent sa, sa's cut_seq is 43 (floor plus waiting plus one, not its own landed save at 30) with
+      cut_is_estimated true, and sa keeps its events below seq 43.
+    model: int_sessions__lineage
+    given:
+      - input: ref('stg_envelope')
+        format: sql
+        rows: |
+          select cast('sa' as varchar) as session_id, cast('park1' as varchar) as park_id, cast(1 as bigint) as seq, cast(1000 as bigint) as game_ticks_elapsed
+          union all
+          select cast('sa' as varchar), cast('park1' as varchar), cast(30 as bigint), cast(1300 as bigint)
+          union all
+          select cast('sa' as varchar), cast('park1' as varchar), cast(40 as bigint), cast(1400 as bigint)
+          union all
+          select cast('sa' as varchar), cast('park1' as varchar), cast(41 as bigint), cast(1410 as bigint)
+          union all
+          select cast('sa' as varchar), cast('park1' as varchar), cast(45 as bigint), cast(1450 as bigint)
+          union all
+          select cast('sb' as varchar), cast('park1' as varchar), cast(1 as bigint), cast(1431 as bigint)
+          union all
+          select cast('sb' as varchar), cast('park1' as varchar), cast(5 as bigint), cast(1460 as bigint)
+          union all
+          select cast('sb' as varchar), cast('park1' as varchar), cast(9 as bigint), cast(1490 as bigint)
+      - input: ref('stg_session_start')
+        format: sql
+        rows: |
+          select cast('sa' as varchar) as session_id, cast('2026-10-01 09:00:00+00' as timestamp with time zone) as emitted_at, cast(null as varchar) as loaded_save_id, cast(null as varchar) as loaded_save_session_id, cast(null as bigint) as loaded_save_seq_floor, cast(null as integer) as loaded_save_lines_waiting
+          union all
+          select cast('sb' as varchar), cast('2026-10-01 10:00:00+00' as timestamp with time zone), cast('va43' as varchar), cast('sa' as varchar), cast(40 as bigint), cast(2 as integer)
+      - input: ref('stg_save_written')
+        format: sql
+        rows: |
+          select cast('va30' as varchar) as save_id, cast('sa' as varchar) as session_id, cast(30 as bigint) as seq
+          union all
+          select cast('vb9' as varchar), cast('sb' as varchar), cast(9 as bigint)
+    expect:
+      rows:
+        - {session_id: sa, park_id: park1, first_seq_is_one: true, has_session_start: true, session_started_at: '2026-10-01 09:00:00+00', loaded_save_id: null, load_status: root, parent_session_id: null, tree_root_session_id: sa, is_frontier: false, is_on_kept_path: true, continued_by_session_id: sb, cut_seq: 43, cut_is_estimated: true, first_kept_game_ticks: 1000, last_kept_game_ticks: 1410, overlaps_kept_session_id: null}
+        - {session_id: sb, park_id: park1, first_seq_is_one: true, has_session_start: true, session_started_at: '2026-10-01 10:00:00+00', loaded_save_id: va43, load_status: estimated, parent_session_id: sa, tree_root_session_id: sa, is_frontier: true, is_on_kept_path: true, continued_by_session_id: null, cut_seq: 9, cut_is_estimated: false, first_kept_game_ticks: 1431, last_kept_game_ticks: 1460, overlaps_kept_session_id: null}
+
+  - name: int_sessions__lineage_u7a_null_waiting_count_gives_an_orphan
+    description: >-
+      It proves that when sb loads a save of sa that has no save_written row and a null waiting count, sb is an orphan
+      that starts its own tree and is kept as its frontier, sa gets no cut from that save and is a root, its own
+      frontier, cut at its own last landed save (20), and since sb's kept ticks start after sa's last kept tick,
+      overlaps_kept_session_id is null on both.
+    model: int_sessions__lineage
+    given:
+      - input: ref('stg_envelope')
+        format: sql
+        rows: |
+          select cast('sa' as varchar) as session_id, cast('park1' as varchar) as park_id, cast(1 as bigint) as seq, cast(1000 as bigint) as game_ticks_elapsed
+          union all
+          select cast('sa' as varchar), cast('park1' as varchar), cast(10 as bigint), cast(1100 as bigint)
+          union all
+          select cast('sa' as varchar), cast('park1' as varchar), cast(20 as bigint), cast(1200 as bigint)
+          union all
+          select cast('sa' as varchar), cast('park1' as varchar), cast(40 as bigint), cast(1400 as bigint)
+          union all
+          select cast('sb' as varchar), cast('park1' as varchar), cast(1 as bigint), cast(1411 as bigint)
+          union all
+          select cast('sb' as varchar), cast('park1' as varchar), cast(4 as bigint), cast(1440 as bigint)
+          union all
+          select cast('sb' as varchar), cast('park1' as varchar), cast(7 as bigint), cast(1470 as bigint)
+      - input: ref('stg_session_start')
+        format: sql
+        rows: |
+          select cast('sa' as varchar) as session_id, cast('2026-10-01 09:00:00+00' as timestamp with time zone) as emitted_at, cast(null as varchar) as loaded_save_id, cast(null as varchar) as loaded_save_session_id, cast(null as bigint) as loaded_save_seq_floor, cast(null as integer) as loaded_save_lines_waiting
+          union all
+          select cast('sb' as varchar), cast('2026-10-01 10:00:00+00' as timestamp with time zone), cast('va41' as varchar), cast('sa' as varchar), cast(40 as bigint), cast(null as integer)
+      - input: ref('stg_save_written')
+        format: sql
+        rows: |
+          select cast('va20' as varchar) as save_id, cast('sa' as varchar) as session_id, cast(20 as bigint) as seq
+          union all
+          select cast('vb7' as varchar), cast('sb' as varchar), cast(7 as bigint)
+    expect:
+      rows:
+        - {session_id: sa, park_id: park1, first_seq_is_one: true, has_session_start: true, session_started_at: '2026-10-01 09:00:00+00', loaded_save_id: null, load_status: root, parent_session_id: null, tree_root_session_id: sa, is_frontier: true, is_on_kept_path: true, continued_by_session_id: null, cut_seq: 20, cut_is_estimated: false, first_kept_game_ticks: 1000, last_kept_game_ticks: 1100, overlaps_kept_session_id: null}
+        - {session_id: sb, park_id: park1, first_seq_is_one: true, has_session_start: true, session_started_at: '2026-10-01 10:00:00+00', loaded_save_id: va41, load_status: orphan, parent_session_id: null, tree_root_session_id: sb, is_frontier: true, is_on_kept_path: true, continued_by_session_id: null, cut_seq: 7, cut_is_estimated: false, first_kept_game_ticks: 1411, last_kept_game_ticks: 1440, overlaps_kept_session_id: null}
+
+  - name: int_sessions__lineage_u7b_lost_save_was_the_parents_only_save
+    description: >-
+      It proves that when sa's only save is the lost one sb loads with a null waiting count, sa is a root and its own
+      frontier with a null cut_seq, null cut_is_estimated and null kept ticks, so its whole session drops from the
+      kept timeline, while sb is an orphan kept as its own frontier.
+    model: int_sessions__lineage
+    given:
+      - input: ref('stg_envelope')
+        format: sql
+        rows: |
+          select cast('sa' as varchar) as session_id, cast('park1' as varchar) as park_id, cast(1 as bigint) as seq, cast(1000 as bigint) as game_ticks_elapsed
+          union all
+          select cast('sa' as varchar), cast('park1' as varchar), cast(10 as bigint), cast(1100 as bigint)
+          union all
+          select cast('sa' as varchar), cast('park1' as varchar), cast(40 as bigint), cast(1400 as bigint)
+          union all
+          select cast('sb' as varchar), cast('park1' as varchar), cast(1 as bigint), cast(1411 as bigint)
+          union all
+          select cast('sb' as varchar), cast('park1' as varchar), cast(4 as bigint), cast(1440 as bigint)
+          union all
+          select cast('sb' as varchar), cast('park1' as varchar), cast(7 as bigint), cast(1470 as bigint)
+      - input: ref('stg_session_start')
+        format: sql
+        rows: |
+          select cast('sa' as varchar) as session_id, cast('2026-10-01 09:00:00+00' as timestamp with time zone) as emitted_at, cast(null as varchar) as loaded_save_id, cast(null as varchar) as loaded_save_session_id, cast(null as bigint) as loaded_save_seq_floor, cast(null as integer) as loaded_save_lines_waiting
+          union all
+          select cast('sb' as varchar), cast('2026-10-01 10:00:00+00' as timestamp with time zone), cast('va41' as varchar), cast('sa' as varchar), cast(40 as bigint), cast(null as integer)
+      - input: ref('stg_save_written')
+        format: sql
+        rows: |
+          select cast('vb7' as varchar) as save_id, cast('sb' as varchar) as session_id, cast(7 as bigint) as seq
+    expect:
+      rows:
+        - {session_id: sa, park_id: park1, first_seq_is_one: true, has_session_start: true, session_started_at: '2026-10-01 09:00:00+00', loaded_save_id: null, load_status: root, parent_session_id: null, tree_root_session_id: sa, is_frontier: true, is_on_kept_path: true, continued_by_session_id: null, cut_seq: null, cut_is_estimated: null, first_kept_game_ticks: null, last_kept_game_ticks: null, overlaps_kept_session_id: null}
+        - {session_id: sb, park_id: park1, first_seq_is_one: true, has_session_start: true, session_started_at: '2026-10-01 10:00:00+00', loaded_save_id: va41, load_status: orphan, parent_session_id: null, tree_root_session_id: sb, is_frontier: true, is_on_kept_path: true, continued_by_session_id: null, cut_seq: 7, cut_is_estimated: false, first_kept_game_ticks: 1411, last_kept_game_ticks: 1440, overlaps_kept_session_id: null}
+
+  - name: int_sessions__lineage_u8_unplaceable_save_is_an_orphan
+    description: >-
+      It proves that a session loading a save with no save_written row whose loaded_save_session_id is not a session
+      in the data is an orphan even with a non-null floor (40) and waiting count (2), and is kept as its tree's
+      frontier, cut at its own last save.
+    model: int_sessions__lineage
+    given:
+      - input: ref('stg_envelope')
+        format: sql
+        rows: |
+          select cast('sb' as varchar) as session_id, cast('park1' as varchar) as park_id, cast(1 as bigint) as seq, cast(5001 as bigint) as game_ticks_elapsed
+          union all
+          select cast('sb' as varchar), cast('park1' as varchar), cast(5 as bigint), cast(5050 as bigint)
+          union all
+          select cast('sb' as varchar), cast('park1' as varchar), cast(9 as bigint), cast(5090 as bigint)
+          union all
+          select cast('sb' as varchar), cast('park1' as varchar), cast(10 as bigint), cast(5100 as bigint)
+      - input: ref('stg_session_start')
+        format: sql
+        rows: |
+          select cast('sb' as varchar) as session_id, cast('2026-10-01 10:00:00+00' as timestamp with time zone) as emitted_at, cast('vx43' as varchar) as loaded_save_id, cast('sx' as varchar) as loaded_save_session_id, cast(40 as bigint) as loaded_save_seq_floor, cast(2 as integer) as loaded_save_lines_waiting
+      - input: ref('stg_save_written')
+        format: sql
+        rows: |
+          select cast('vb5' as varchar) as save_id, cast('sb' as varchar) as session_id, cast(5 as bigint) as seq
+          union all
+          select cast('vb9' as varchar), cast('sb' as varchar), cast(9 as bigint)
+    expect:
+      rows:
+        - {session_id: sb, park_id: park1, first_seq_is_one: true, has_session_start: true, session_started_at: '2026-10-01 10:00:00+00', loaded_save_id: vx43, load_status: orphan, parent_session_id: null, tree_root_session_id: sb, is_frontier: true, is_on_kept_path: true, continued_by_session_id: null, cut_seq: 9, cut_is_estimated: false, first_kept_game_ticks: 5001, last_kept_game_ticks: 5050, overlaps_kept_session_id: null}
+
+  - name: int_sessions__lineage_u9_continuation_without_session_start_overlaps
+    description: >-
+      It proves that a session with no session_start still gets a row: sb has first seq 5 and a save at seq 30, so it
+      is a root with has_session_start false and first_seq_is_one false, its own frontier, cut at 30; sa, a root that
+      saves at seq 20 and 60, is its own frontier cut at 60; sb's kept ticks start between sa's two saves, so each
+      row's overlaps_kept_session_id names the other.
+    model: int_sessions__lineage
+    given:
+      - input: ref('stg_envelope')
+        format: sql
+        rows: |
+          select cast('sa' as varchar) as session_id, cast('park1' as varchar) as park_id, cast(1 as bigint) as seq, cast(1000 as bigint) as game_ticks_elapsed
+          union all
+          select cast('sa' as varchar), cast('park1' as varchar), cast(20 as bigint), cast(1200 as bigint)
+          union all
+          select cast('sa' as varchar), cast('park1' as varchar), cast(40 as bigint), cast(1400 as bigint)
+          union all
+          select cast('sa' as varchar), cast('park1' as varchar), cast(60 as bigint), cast(1600 as bigint)
+          union all
+          select cast('sb' as varchar), cast('park1' as varchar), cast(5 as bigint), cast(1300 as bigint)
+          union all
+          select cast('sb' as varchar), cast('park1' as varchar), cast(20 as bigint), cast(1350 as bigint)
+          union all
+          select cast('sb' as varchar), cast('park1' as varchar), cast(30 as bigint), cast(1500 as bigint)
+      - input: ref('stg_session_start')
+        format: sql
+        rows: |
+          select cast('sa' as varchar) as session_id, cast('2026-10-01 09:00:00+00' as timestamp with time zone) as emitted_at, cast(null as varchar) as loaded_save_id, cast(null as varchar) as loaded_save_session_id, cast(null as bigint) as loaded_save_seq_floor, cast(null as integer) as loaded_save_lines_waiting
+      - input: ref('stg_save_written')
+        format: sql
+        rows: |
+          select cast('va20' as varchar) as save_id, cast('sa' as varchar) as session_id, cast(20 as bigint) as seq
+          union all
+          select cast('va60' as varchar), cast('sa' as varchar), cast(60 as bigint)
+          union all
+          select cast('vb30' as varchar), cast('sb' as varchar), cast(30 as bigint)
+    expect:
+      rows:
+        - {session_id: sa, park_id: park1, first_seq_is_one: true, has_session_start: true, session_started_at: '2026-10-01 09:00:00+00', loaded_save_id: null, load_status: root, parent_session_id: null, tree_root_session_id: sa, is_frontier: true, is_on_kept_path: true, continued_by_session_id: null, cut_seq: 60, cut_is_estimated: false, first_kept_game_ticks: 1000, last_kept_game_ticks: 1400, overlaps_kept_session_id: sb}
+        - {session_id: sb, park_id: park1, first_seq_is_one: false, has_session_start: false, session_started_at: null, loaded_save_id: null, load_status: root, parent_session_id: null, tree_root_session_id: sb, is_frontier: true, is_on_kept_path: true, continued_by_session_id: null, cut_seq: 30, cut_is_estimated: false, first_kept_game_ticks: 1300, last_kept_game_ticks: 1350, overlaps_kept_session_id: sa}
+
+  - name: int_sessions__lineage_u10_frontier_without_a_landed_save_keeps_nothing
+    description: >-
+      It proves that a frontier with no landed save_written (sb) is on the kept path with a null cut_seq, null
+      cut_is_estimated and null kept ticks, while its parent sa is still cut at the save sb loaded.
+    model: int_sessions__lineage
+    given:
+      - input: ref('stg_envelope')
+        format: sql
+        rows: |
+          select cast('sa' as varchar) as session_id, cast('park1' as varchar) as park_id, cast(1 as bigint) as seq, cast(1000 as bigint) as game_ticks_elapsed
+          union all
+          select cast('sa' as varchar), cast('park1' as varchar), cast(10 as bigint), cast(1100 as bigint)
+          union all
+          select cast('sa' as varchar), cast('park1' as varchar), cast(20 as bigint), cast(1200 as bigint)
+          union all
+          select cast('sb' as varchar), cast('park1' as varchar), cast(1 as bigint), cast(1201 as bigint)
+          union all
+          select cast('sb' as varchar), cast('park1' as varchar), cast(6 as bigint), cast(1260 as bigint)
+      - input: ref('stg_session_start')
+        format: sql
+        rows: |
+          select cast('sa' as varchar) as session_id, cast('2026-10-01 09:00:00+00' as timestamp with time zone) as emitted_at, cast(null as varchar) as loaded_save_id, cast(null as varchar) as loaded_save_session_id, cast(null as bigint) as loaded_save_seq_floor, cast(null as integer) as loaded_save_lines_waiting
+          union all
+          select cast('sb' as varchar), cast('2026-10-01 10:00:00+00' as timestamp with time zone), cast('va20' as varchar), cast('sa' as varchar), cast(19 as bigint), cast(0 as integer)
+      - input: ref('stg_save_written')
+        format: sql
+        rows: |
+          select cast('va20' as varchar) as save_id, cast('sa' as varchar) as session_id, cast(20 as bigint) as seq
+    expect:
+      rows:
+        - {session_id: sa, park_id: park1, first_seq_is_one: true, has_session_start: true, session_started_at: '2026-10-01 09:00:00+00', loaded_save_id: null, load_status: root, parent_session_id: null, tree_root_session_id: sa, is_frontier: false, is_on_kept_path: true, continued_by_session_id: sb, cut_seq: 20, cut_is_estimated: false, first_kept_game_ticks: 1000, last_kept_game_ticks: 1100, overlaps_kept_session_id: null}
+        - {session_id: sb, park_id: park1, first_seq_is_one: true, has_session_start: true, session_started_at: '2026-10-01 10:00:00+00', loaded_save_id: va20, load_status: loaded, parent_session_id: sa, tree_root_session_id: sa, is_frontier: true, is_on_kept_path: true, continued_by_session_id: null, cut_seq: null, cut_is_estimated: null, first_kept_game_ticks: null, last_kept_game_ticks: null, overlaps_kept_session_id: null}
+
+  - name: int_sessions__lineage_u13_parent_loops_beside_a_sound_tree
+    description: >-
+      It proves that sessions in parent loops never reach a tree or the kept path and the build still finishes: sx and
+      sy each load a save the other wrote, and sz loads a save it wrote itself, so all three have a null
+      tree_root_session_id, is_frontier false and is_on_kept_path false, while the sound root sr is unchanged (its own
+      frontier, on the kept path, cut at its save). A frontier step without the non-null tree_root_session_id filter
+      hangs or fails this case.
+    model: int_sessions__lineage
+    given:
+      - input: ref('stg_envelope')
+        format: sql
+        rows: |
+          select cast('sr' as varchar) as session_id, cast('park1' as varchar) as park_id, cast(1 as bigint) as seq, cast(1000 as bigint) as game_ticks_elapsed
+          union all
+          select cast('sr' as varchar), cast('park1' as varchar), cast(10 as bigint), cast(1100 as bigint)
+          union all
+          select cast('sr' as varchar), cast('park1' as varchar), cast(20 as bigint), cast(1200 as bigint)
+          union all
+          select cast('sx' as varchar), cast('park1' as varchar), cast(1 as bigint), cast(2001 as bigint)
+          union all
+          select cast('sx' as varchar), cast('park1' as varchar), cast(25 as bigint), cast(2250 as bigint)
+          union all
+          select cast('sy' as varchar), cast('park1' as varchar), cast(1 as bigint), cast(3001 as bigint)
+          union all
+          select cast('sy' as varchar), cast('park1' as varchar), cast(35 as bigint), cast(3350 as bigint)
+          union all
+          select cast('sz' as varchar), cast('park1' as varchar), cast(1 as bigint), cast(4001 as bigint)
+          union all
+          select cast('sz' as varchar), cast('park1' as varchar), cast(15 as bigint), cast(4150 as bigint)
+      - input: ref('stg_session_start')
+        format: sql
+        rows: |
+          select cast('sr' as varchar) as session_id, cast('2026-10-01 09:00:00+00' as timestamp with time zone) as emitted_at, cast(null as varchar) as loaded_save_id, cast(null as varchar) as loaded_save_session_id, cast(null as bigint) as loaded_save_seq_floor, cast(null as integer) as loaded_save_lines_waiting
+          union all
+          select cast('sx' as varchar), cast('2026-10-01 10:00:00+00' as timestamp with time zone), cast('vy35' as varchar), cast('sy' as varchar), cast(34 as bigint), cast(0 as integer)
+          union all
+          select cast('sy' as varchar), cast('2026-10-01 11:00:00+00' as timestamp with time zone), cast('vx25' as varchar), cast('sx' as varchar), cast(24 as bigint), cast(0 as integer)
+          union all
+          select cast('sz' as varchar), cast('2026-10-01 12:00:00+00' as timestamp with time zone), cast('vz15' as varchar), cast('sz' as varchar), cast(14 as bigint), cast(0 as integer)
+      - input: ref('stg_save_written')
+        format: sql
+        rows: |
+          select cast('vr20' as varchar) as save_id, cast('sr' as varchar) as session_id, cast(20 as bigint) as seq
+          union all
+          select cast('vx25' as varchar), cast('sx' as varchar), cast(25 as bigint)
+          union all
+          select cast('vy35' as varchar), cast('sy' as varchar), cast(35 as bigint)
+          union all
+          select cast('vz15' as varchar), cast('sz' as varchar), cast(15 as bigint)
+    expect:
+      rows:
+        - {session_id: sr, park_id: park1, first_seq_is_one: true, has_session_start: true, session_started_at: '2026-10-01 09:00:00+00', loaded_save_id: null, load_status: root, parent_session_id: null, tree_root_session_id: sr, is_frontier: true, is_on_kept_path: true, continued_by_session_id: null, cut_seq: 20, cut_is_estimated: false, first_kept_game_ticks: 1000, last_kept_game_ticks: 1100, overlaps_kept_session_id: null}
+        - {session_id: sx, park_id: park1, first_seq_is_one: true, has_session_start: true, session_started_at: '2026-10-01 10:00:00+00', loaded_save_id: vy35, load_status: loaded, parent_session_id: sy, tree_root_session_id: null, is_frontier: false, is_on_kept_path: false, continued_by_session_id: null, cut_seq: null, cut_is_estimated: null, first_kept_game_ticks: null, last_kept_game_ticks: null, overlaps_kept_session_id: null}
+        - {session_id: sy, park_id: park1, first_seq_is_one: true, has_session_start: true, session_started_at: '2026-10-01 11:00:00+00', loaded_save_id: vx25, load_status: loaded, parent_session_id: sx, tree_root_session_id: null, is_frontier: false, is_on_kept_path: false, continued_by_session_id: null, cut_seq: null, cut_is_estimated: null, first_kept_game_ticks: null, last_kept_game_ticks: null, overlaps_kept_session_id: null}
+        - {session_id: sz, park_id: park1, first_seq_is_one: true, has_session_start: true, session_started_at: '2026-10-01 12:00:00+00', loaded_save_id: vz15, load_status: loaded, parent_session_id: sz, tree_root_session_id: null, is_frontier: false, is_on_kept_path: false, continued_by_session_id: null, cut_seq: null, cut_is_estimated: null, first_kept_game_ticks: null, last_kept_game_ticks: null, overlaps_kept_session_id: null}
+
+  - name: int_sessions__lineage_u14_two_orphans_of_one_save_keep_only_the_later
+    description: >-
+      It proves that two orphans of one park loading the same unplaceable save form one tree rooted at the
+      earlier-started orphan (sd, which has the greater session_id), that only the later-started orphan (sc) is the
+      frontier and kept, cut at its own last save, that sd is off the kept path with every cut and tick column null,
+      and that, although both played the same game ticks, neither row overlaps.
+    model: int_sessions__lineage
+    given:
+      - input: ref('stg_envelope')
+        format: sql
+        rows: |
+          select cast('sd' as varchar) as session_id, cast('park1' as varchar) as park_id, cast(1 as bigint) as seq, cast(5001 as bigint) as game_ticks_elapsed
+          union all
+          select cast('sd' as varchar), cast('park1' as varchar), cast(6 as bigint), cast(5050 as bigint)
+          union all
+          select cast('sd' as varchar), cast('park1' as varchar), cast(10 as bigint), cast(5100 as bigint)
+          union all
+          select cast('sc' as varchar), cast('park1' as varchar), cast(1 as bigint), cast(5002 as bigint)
+          union all
+          select cast('sc' as varchar), cast('park1' as varchar), cast(7 as bigint), cast(5060 as bigint)
+          union all
+          select cast('sc' as varchar), cast('park1' as varchar), cast(12 as bigint), cast(5120 as bigint)
+      - input: ref('stg_session_start')
+        format: sql
+        rows: |
+          select cast('sd' as varchar) as session_id, cast('2026-10-01 10:00:00+00' as timestamp with time zone) as emitted_at, cast('vs50' as varchar) as loaded_save_id, cast('sx' as varchar) as loaded_save_session_id, cast(49 as bigint) as loaded_save_seq_floor, cast(0 as integer) as loaded_save_lines_waiting
+          union all
+          select cast('sc' as varchar), cast('2026-10-01 11:00:00+00' as timestamp with time zone), cast('vs50' as varchar), cast('sx' as varchar), cast(48 as bigint), cast(1 as integer)
+      - input: ref('stg_save_written')
+        format: sql
+        rows: |
+          select cast('vd10' as varchar) as save_id, cast('sd' as varchar) as session_id, cast(10 as bigint) as seq
+          union all
+          select cast('vc12' as varchar), cast('sc' as varchar), cast(12 as bigint)
+    expect:
+      rows:
+        - {session_id: sc, park_id: park1, first_seq_is_one: true, has_session_start: true, session_started_at: '2026-10-01 11:00:00+00', loaded_save_id: vs50, load_status: orphan, parent_session_id: null, tree_root_session_id: sd, is_frontier: true, is_on_kept_path: true, continued_by_session_id: null, cut_seq: 12, cut_is_estimated: false, first_kept_game_ticks: 5002, last_kept_game_ticks: 5060, overlaps_kept_session_id: null}
+        - {session_id: sd, park_id: park1, first_seq_is_one: true, has_session_start: true, session_started_at: '2026-10-01 10:00:00+00', loaded_save_id: vs50, load_status: orphan, parent_session_id: null, tree_root_session_id: sd, is_frontier: false, is_on_kept_path: false, continued_by_session_id: null, cut_seq: null, cut_is_estimated: null, first_kept_game_ticks: null, last_kept_game_ticks: null, overlaps_kept_session_id: null}
+
+  - name: int_sessions__lineage_u15_root_without_session_start_is_older_than_its_child
+    description: >-
+      It proves that a session with no session_start sorts before its child that has one: sb has no session_start and
+      writes a save at seq 30, sa loads it, so sa is the frontier and sb is on the kept path, cut at 30. A frontier
+      step that sorts session_started_at descending with nulls first makes sb the frontier and fails.
+    model: int_sessions__lineage
+    given:
+      - input: ref('stg_envelope')
+        format: sql
+        rows: |
+          select cast('sb' as varchar) as session_id, cast('park1' as varchar) as park_id, cast(1 as bigint) as seq, cast(1000 as bigint) as game_ticks_elapsed
+          union all
+          select cast('sb' as varchar), cast('park1' as varchar), cast(20 as bigint), cast(1200 as bigint)
+          union all
+          select cast('sb' as varchar), cast('park1' as varchar), cast(30 as bigint), cast(1300 as bigint)
+          union all
+          select cast('sb' as varchar), cast('park1' as varchar), cast(31 as bigint), cast(1310 as bigint)
+          union all
+          select cast('sa' as varchar), cast('park1' as varchar), cast(1 as bigint), cast(1301 as bigint)
+          union all
+          select cast('sa' as varchar), cast('park1' as varchar), cast(5 as bigint), cast(1340 as bigint)
+          union all
+          select cast('sa' as varchar), cast('park1' as varchar), cast(9 as bigint), cast(1380 as bigint)
+      - input: ref('stg_session_start')
+        format: sql
+        rows: |
+          select cast('sa' as varchar) as session_id, cast('2026-10-01 10:00:00+00' as timestamp with time zone) as emitted_at, cast('vb30' as varchar) as loaded_save_id, cast('sb' as varchar) as loaded_save_session_id, cast(29 as bigint) as loaded_save_seq_floor, cast(0 as integer) as loaded_save_lines_waiting
+      - input: ref('stg_save_written')
+        format: sql
+        rows: |
+          select cast('vb30' as varchar) as save_id, cast('sb' as varchar) as session_id, cast(30 as bigint) as seq
+          union all
+          select cast('va9' as varchar), cast('sa' as varchar), cast(9 as bigint)
+    expect:
+      rows:
+        - {session_id: sa, park_id: park1, first_seq_is_one: true, has_session_start: true, session_started_at: '2026-10-01 10:00:00+00', loaded_save_id: vb30, load_status: loaded, parent_session_id: sb, tree_root_session_id: sb, is_frontier: true, is_on_kept_path: true, continued_by_session_id: null, cut_seq: 9, cut_is_estimated: false, first_kept_game_ticks: 1301, last_kept_game_ticks: 1340, overlaps_kept_session_id: null}
+        - {session_id: sb, park_id: park1, first_seq_is_one: true, has_session_start: false, session_started_at: null, loaded_save_id: null, load_status: root, parent_session_id: null, tree_root_session_id: sb, is_frontier: false, is_on_kept_path: true, continued_by_session_id: sa, cut_seq: 30, cut_is_estimated: false, first_kept_game_ticks: 1000, last_kept_game_ticks: 1200, overlaps_kept_session_id: null}
+
+  - name: int_sessions__lineage_u16_one_shared_tick_is_not_an_overlap
+    description: >-
+      It proves that two kept ranges of one park that share exactly one tick do not overlap: sa, a root, keeps ticks
+      400 to 500 and sb, a second root, keeps ticks 500 to 600, both are on the kept path and overlaps_kept_session_id
+      is null on both. An inclusive comparison fails this case.
+    model: int_sessions__lineage
+    given:
+      - input: ref('stg_envelope')
+        format: sql
+        rows: |
+          select cast('sa' as varchar) as session_id, cast('park1' as varchar) as park_id, cast(1 as bigint) as seq, cast(400 as bigint) as game_ticks_elapsed
+          union all
+          select cast('sa' as varchar), cast('park1' as varchar), cast(5 as bigint), cast(500 as bigint)
+          union all
+          select cast('sa' as varchar), cast('park1' as varchar), cast(8 as bigint), cast(510 as bigint)
+          union all
+          select cast('sb' as varchar), cast('park1' as varchar), cast(1 as bigint), cast(500 as bigint)
+          union all
+          select cast('sb' as varchar), cast('park1' as varchar), cast(6 as bigint), cast(600 as bigint)
+          union all
+          select cast('sb' as varchar), cast('park1' as varchar), cast(9 as bigint), cast(650 as bigint)
+      - input: ref('stg_session_start')
+        format: sql
+        rows: |
+          select cast('sa' as varchar) as session_id, cast('2026-10-01 09:00:00+00' as timestamp with time zone) as emitted_at, cast(null as varchar) as loaded_save_id, cast(null as varchar) as loaded_save_session_id, cast(null as bigint) as loaded_save_seq_floor, cast(null as integer) as loaded_save_lines_waiting
+          union all
+          select cast('sb' as varchar), cast('2026-10-01 10:00:00+00' as timestamp with time zone), cast(null as varchar), cast(null as varchar), cast(null as bigint), cast(null as integer)
+      - input: ref('stg_save_written')
+        format: sql
+        rows: |
+          select cast('va8' as varchar) as save_id, cast('sa' as varchar) as session_id, cast(8 as bigint) as seq
+          union all
+          select cast('vb9' as varchar), cast('sb' as varchar), cast(9 as bigint)
+    expect:
+      rows:
+        - {session_id: sa, park_id: park1, first_seq_is_one: true, has_session_start: true, session_started_at: '2026-10-01 09:00:00+00', loaded_save_id: null, load_status: root, parent_session_id: null, tree_root_session_id: sa, is_frontier: true, is_on_kept_path: true, continued_by_session_id: null, cut_seq: 8, cut_is_estimated: false, first_kept_game_ticks: 400, last_kept_game_ticks: 500, overlaps_kept_session_id: null}
+        - {session_id: sb, park_id: park1, first_seq_is_one: true, has_session_start: true, session_started_at: '2026-10-01 10:00:00+00', loaded_save_id: null, load_status: root, parent_session_id: null, tree_root_session_id: sb, is_frontier: true, is_on_kept_path: true, continued_by_session_id: null, cut_seq: 9, cut_is_estimated: false, first_kept_game_ticks: 500, last_kept_game_ticks: 600, overlaps_kept_session_id: null}
+
+  - name: int_sessions__lineage_u17_overlap_stays_within_one_park
+    description: >-
+      It proves that overlapping kept ranges in different parks do not overlap:
+      sa in park1 keeps ticks 400 to 600 and sb in park2 keeps ticks 450 to
+      550, yet overlaps_kept_session_id is null on both. Removing park scope
+      from the overlap join fails this case.
+    model: int_sessions__lineage
+    given:
+      - input: ref('stg_envelope')
+        format: sql
+        rows: |
+          select cast('sa' as varchar) as session_id, cast('park1' as varchar) as park_id, cast(1 as bigint) as seq, cast(400 as bigint) as game_ticks_elapsed
+          union all
+          select cast('sa' as varchar), cast('park1' as varchar), cast(2 as bigint), cast(600 as bigint)
+          union all
+          select cast('sa' as varchar), cast('park1' as varchar), cast(3 as bigint), cast(610 as bigint)
+          union all
+          select cast('sb' as varchar), cast('park2' as varchar), cast(1 as bigint), cast(450 as bigint)
+          union all
+          select cast('sb' as varchar), cast('park2' as varchar), cast(2 as bigint), cast(550 as bigint)
+          union all
+          select cast('sb' as varchar), cast('park2' as varchar), cast(3 as bigint), cast(560 as bigint)
+      - input: ref('stg_session_start')
+        format: sql
+        rows: |
+          select cast('sa' as varchar) as session_id, cast('2026-10-01 09:00:00+00' as timestamp with time zone) as emitted_at, cast(null as varchar) as loaded_save_id, cast(null as varchar) as loaded_save_session_id, cast(null as bigint) as loaded_save_seq_floor, cast(null as integer) as loaded_save_lines_waiting
+          union all
+          select cast('sb' as varchar), cast('2026-10-01 10:00:00+00' as timestamp with time zone), cast(null as varchar), cast(null as varchar), cast(null as bigint), cast(null as integer)
+      - input: ref('stg_save_written')
+        format: sql
+        rows: |
+          select cast('va3' as varchar) as save_id, cast('sa' as varchar) as session_id, cast(3 as bigint) as seq
+          union all
+          select cast('vb3' as varchar), cast('sb' as varchar), cast(3 as bigint)
+    expect:
+      rows:
+        - {session_id: sa, park_id: park1, first_seq_is_one: true, has_session_start: true, session_started_at: '2026-10-01 09:00:00+00', loaded_save_id: null, load_status: root, parent_session_id: null, tree_root_session_id: sa, is_frontier: true, is_on_kept_path: true, continued_by_session_id: null, cut_seq: 3, cut_is_estimated: false, first_kept_game_ticks: 400, last_kept_game_ticks: 600, overlaps_kept_session_id: null}
+        - {session_id: sb, park_id: park2, first_seq_is_one: true, has_session_start: true, session_started_at: '2026-10-01 10:00:00+00', loaded_save_id: null, load_status: root, parent_session_id: null, tree_root_session_id: sb, is_frontier: true, is_on_kept_path: true, continued_by_session_id: null, cut_seq: 3, cut_is_estimated: false, first_kept_game_ticks: 450, last_kept_game_ticks: 550, overlaps_kept_session_id: null}
+
+  - name: int_sessions__lineage_u18_orphans_group_within_one_park
+    description: >-
+      It proves that sessions in different parks loading the same missing save
+      remain separate orphan trees. Each session is its own root and frontier,
+      and each keeps its own ticks. Grouping orphans by loaded_save_id alone
+      merges the trees and fails this case.
+    model: int_sessions__lineage
+    given:
+      - input: ref('stg_envelope')
+        format: sql
+        rows: |
+          select cast('oa' as varchar) as session_id, cast('park1' as varchar) as park_id, cast(1 as bigint) as seq, cast(100 as bigint) as game_ticks_elapsed
+          union all
+          select cast('oa' as varchar), cast('park1' as varchar), cast(2 as bigint), cast(110 as bigint)
+          union all
+          select cast('oa' as varchar), cast('park1' as varchar), cast(3 as bigint), cast(120 as bigint)
+          union all
+          select cast('ob' as varchar), cast('park2' as varchar), cast(1 as bigint), cast(200 as bigint)
+          union all
+          select cast('ob' as varchar), cast('park2' as varchar), cast(2 as bigint), cast(210 as bigint)
+          union all
+          select cast('ob' as varchar), cast('park2' as varchar), cast(3 as bigint), cast(220 as bigint)
+      - input: ref('stg_session_start')
+        format: sql
+        rows: |
+          select cast('oa' as varchar) as session_id, cast('2026-10-01 09:00:00+00' as timestamp with time zone) as emitted_at, cast('missing' as varchar) as loaded_save_id, cast('unknown' as varchar) as loaded_save_session_id, cast(null as bigint) as loaded_save_seq_floor, cast(null as integer) as loaded_save_lines_waiting
+          union all
+          select cast('ob' as varchar), cast('2026-10-01 10:00:00+00' as timestamp with time zone), cast('missing' as varchar), cast('unknown' as varchar), cast(null as bigint), cast(null as integer)
+      - input: ref('stg_save_written')
+        format: sql
+        rows: |
+          select cast('va3' as varchar) as save_id, cast('oa' as varchar) as session_id, cast(3 as bigint) as seq
+          union all
+          select cast('vb3' as varchar), cast('ob' as varchar), cast(3 as bigint)
+    expect:
+      rows:
+        - {session_id: oa, park_id: park1, first_seq_is_one: true, has_session_start: true, session_started_at: '2026-10-01 09:00:00+00', loaded_save_id: missing, load_status: orphan, parent_session_id: null, tree_root_session_id: oa, is_frontier: true, is_on_kept_path: true, continued_by_session_id: null, cut_seq: 3, cut_is_estimated: false, first_kept_game_ticks: 100, last_kept_game_ticks: 110, overlaps_kept_session_id: null}
+        - {session_id: ob, park_id: park2, first_seq_is_one: true, has_session_start: true, session_started_at: '2026-10-01 10:00:00+00', loaded_save_id: missing, load_status: orphan, parent_session_id: null, tree_root_session_id: ob, is_frontier: true, is_on_kept_path: true, continued_by_session_id: null, cut_seq: 3, cut_is_estimated: false, first_kept_game_ticks: 200, last_kept_game_ticks: 210, overlaps_kept_session_id: null}

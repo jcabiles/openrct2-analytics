@@ -1,0 +1,645 @@
+version: 2
+
+models:
+  - name: stg_park_snapshot
+    description: >-
+      Answers how the park stands at the start of each game day (cash, guests, rating, admissions and weather), so
+      park-level trends start from one clean row per reading. Grain: one row per park snapshot event, which is one per
+      session per game day; a reload can give two rows for one park and game day, which later intermediate models
+      resolve. Key: event_id, unique after the dedupe that keeps the first-received copy of a repeated delivery.
+      Renames and casts only: cash is converted from tenths of a dollar to dollars here, once. Unit: none for the
+      model as a whole; clock: game calendar, at the start of the game day.
+    meta:
+      contract_version: 1.8.0
+      expected_min_rows: 1
+    config:
+      contract:
+        enforced: true
+    data_tests:
+      - repeat_delivery_payload_differs:
+          arguments:
+            source_relation: source('landing', 'park_snapshot')
+    columns:
+      - name: schema_version
+        description: "Major version of the contract set; unit: count (always 1 here); no clock."
+        data_type: integer
+        data_tests:
+          - not_null
+      - name: event_type
+        description: "Event kind (park_snapshot here); text, no unit, no clock."
+        data_type: varchar
+        data_tests:
+          - not_null
+      - name: plugin_version
+        description: "Plugin build that sent the event; text version, no unit, no clock."
+        data_type: varchar
+        data_tests:
+          - not_null
+      - name: park_id
+        description: "Stable park identifier from park storage; text, no unit, no clock."
+        data_type: varchar
+        data_tests:
+          - not_null
+      - name: session_id
+        description: "Plugin start identifier, new on every start; text, no unit, no clock."
+        data_type: varchar
+        data_tests:
+          - not_null
+      - name: seq
+        description: "Order within the session across all event types, from 1; unit: count; no clock (session order, not a time)."
+        data_type: bigint
+        data_tests:
+          - not_null
+      - name: event_id
+        description: "session_id-seq; text, one per row after the dedupe; no unit, no clock."
+        data_type: varchar
+        data_tests:
+          - not_null
+          - unique
+      - name: game_year
+        description: "In-game year, from 1; unit: year; clock: game calendar."
+        data_type: integer
+        data_tests:
+          - not_null
+      - name: game_month
+        description: "In-game month, 0 to 7 (March = 0); unit: month; clock: game calendar."
+        data_type: integer
+        data_tests:
+          - not_null
+      - name: game_day
+        description: "In-game day of the month, from 1; unit: day; clock: game calendar."
+        data_type: integer
+        data_tests:
+          - not_null
+      - name: game_ticks_elapsed
+        description: "Game ticks since the park began; unit: game tick; clock: game."
+        data_type: bigint
+        data_tests:
+          - not_null
+      - name: emitted_at
+        description: "Producer time when the event was sent; unit: timestamp (UTC); clock: wall clock."
+        data_type: timestamp with time zone
+        data_tests:
+          - not_null
+      - name: received_at
+        description: "Listener time when the line landed, the first key of the dedupe order; unit: timestamp (UTC); clock: wall clock."
+        data_type: timestamp with time zone
+        data_tests:
+          - not_null
+      - name: _raw_file
+        description: "Base name of the raw JSON Lines file the delivery came from, never a path; text, no unit, no clock."
+        data_type: varchar
+        data_tests:
+          - not_null
+      - name: _raw_line
+        description: "1-based physical line number of the delivery in that raw file, blank lines counted; unit: line number; no clock."
+        data_type: bigint
+        data_tests:
+          - not_null
+      - name: cash_usd
+        description: "Park cash in US dollars, converted once from the game's tenths of a dollar, may be negative; unit: US dollar; clock: game calendar, sampled at the start of the game day."
+        data_type: decimal(18,2)
+        data_tests:
+          - not_null
+      - name: guests_in_park
+        description: "Guests inside the park; unit: count of guests; clock: game calendar, at the start of the game day."
+        data_type: integer
+        data_tests:
+          - not_null
+      - name: park_rating
+        description: "Park rating in engine units, 0 to 999; unit: rating points; clock: game calendar, at the start of the game day."
+        data_type: integer
+        data_tests:
+          - not_null
+      - name: total_admissions
+        description: "Cumulative guest admissions, which a reload can rewind; unit: count of guests; clock: game calendar, at the start of the game day."
+        data_type: bigint
+        data_tests:
+          - not_null
+      - name: weather
+        description: "The park's weather as the game names it (sunny to blizzard); text, no unit; clock: game calendar, at the start of the game day. Null for plugins before 0.3.0."
+        data_type: varchar
+      - name: temperature_c
+        description: "The park's temperature, may be negative; unit: degrees Celsius (unverified against the real game); clock: game calendar, at the start of the game day. Null for plugins before 0.3.0."
+        data_type: integer
+
+unit_tests:
+  - name: stg_park_snapshot_keeps_the_first_received_copy_of_each_event
+    description: >-
+      The model keeps the first received copy by received_at, then raw file, then raw line. Nineteen event IDs have two deliveries with the
+      same received_at: eighteen tie within one raw file, while one spans a.jsonl and b.jsonl. The lower _raw_line wins whatever the input order (first in
+      the input for five, last for thirteen) within a file, and a.jsonl wins the cross-file tie; emitted_at does not override the order. A further event has an
+      earlier received_at on a higher line, which still wins. Cash converts from tenths of a dollar to dollars, for positive,
+      negative, zero and beyond-floating-point values, and weather and temperature pass through unchanged, nulls included.
+    model: stg_park_snapshot
+    given:
+      - input: source('landing', 'park_snapshot')
+        format: sql
+        rows: |
+          select
+            cast(1 as integer) as schema_version, cast('park_snapshot' as varchar) as event_type,
+            cast('0.3.0' as varchar) as plugin_version, cast('kpark1' as varchar) as park_id,
+            cast('s1' as varchar) as session_id, cast(1 as bigint) as seq, cast('s1-1' as varchar) as event_id,
+            cast(1 as integer) as game_year, cast(0 as integer) as game_month, cast(1 as integer) as game_day,
+            cast(1000 as bigint) as game_ticks_elapsed, cast('2026-09-30 23:30:00+00' as timestamptz) as emitted_at,
+            cast('2026-09-30 23:31:00+00' as timestamptz) as received_at, cast('a.jsonl' as varchar) as _raw_file,
+            cast(4 as bigint) as _raw_line, cast(12345 as bigint) as cash_tenths,
+            cast(7 as integer) as guests_in_park, cast(650 as integer) as park_rating,
+            cast(12 as bigint) as total_admissions, cast('sunny' as varchar) as weather,
+            cast(18 as integer) as temperature_c
+          union all
+          select
+            cast(1 as integer), cast('park_snapshot' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(1 as bigint), cast('s1-1' as varchar),
+            cast(1 as integer), cast(0 as integer), cast(1 as integer), cast(1000 as bigint),
+            cast('2026-09-30 23:20:00+00' as timestamptz), cast('2026-09-30 23:31:00+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(9 as bigint), cast(99999 as bigint), cast(70 as integer),
+            cast(500 as integer), cast(99 as bigint), cast('rain' as varchar), cast(2 as integer)
+          union all
+          select
+            cast(1 as integer), cast('park_snapshot' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(2 as bigint), cast('s1-2' as varchar),
+            cast(1 as integer), cast(0 as integer), cast(2 as integer), cast(1001 as bigint),
+            cast('2026-09-30 23:25:00+00' as timestamptz), cast('2026-09-30 23:31:00+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(20 as bigint), cast(5 as bigint), cast(80 as integer),
+            cast(501 as integer), cast(98 as bigint), cast('sunny' as varchar), cast(30 as integer)
+          union all
+          select
+            cast(1 as integer), cast('park_snapshot' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(2 as bigint), cast('s1-2' as varchar),
+            cast(1 as integer), cast(0 as integer), cast(2 as integer), cast(1001 as bigint),
+            cast('2026-09-30 23:30:00+00' as timestamptz), cast('2026-09-30 23:31:00+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(5 as bigint), cast(-7 as bigint), cast(8 as integer),
+            cast(651 as integer), cast(13 as bigint), cast('rain' as varchar), cast(-3 as integer)
+          union all
+          select
+            cast(1 as integer), cast('park_snapshot' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(3 as bigint), cast('s1-3' as varchar),
+            cast(1 as integer), cast(0 as integer), cast(3 as integer), cast(1002 as bigint),
+            cast('2026-09-30 23:10:00+00' as timestamptz), cast('2026-09-30 23:32:00+00' as timestamptz),
+            cast('b.jsonl' as varchar), cast(17 as bigint), cast(1 as bigint), cast(90 as integer),
+            cast(502 as integer), cast(97 as bigint), cast('storm' as varchar), cast(25 as integer)
+          union all
+          select
+            cast(1 as integer), cast('park_snapshot' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(3 as bigint), cast('s1-3' as varchar),
+            cast(1 as integer), cast(0 as integer), cast(3 as integer), cast(1002 as bigint),
+            cast('2026-09-30 23:30:00+00' as timestamptz), cast('2026-09-30 23:32:00+00' as timestamptz),
+            cast('b.jsonl' as varchar), cast(2 as bigint), cast(9007199254740993 as bigint), cast(9 as integer),
+            cast(652 as integer), cast(14 as bigint), cast(null as varchar), cast(null as integer)
+          union all
+          select
+            cast(1 as integer), cast('park_snapshot' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(4 as bigint), cast('s1-4' as varchar),
+            cast(1 as integer), cast(0 as integer), cast(4 as integer), cast(1003 as bigint),
+            cast('2026-09-30 23:05:00+00' as timestamptz), cast('2026-09-30 23:33:00+00' as timestamptz),
+            cast('b.jsonl' as varchar), cast(40 as bigint), cast(2 as bigint), cast(100 as integer),
+            cast(503 as integer), cast(96 as bigint), cast('sunny' as varchar), cast(-9 as integer)
+          union all
+          select
+            cast(1 as integer), cast('park_snapshot' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(4 as bigint), cast('s1-4' as varchar),
+            cast(1 as integer), cast(0 as integer), cast(4 as integer), cast(1003 as bigint),
+            cast('2026-09-30 23:30:00+00' as timestamptz), cast('2026-09-30 23:33:00+00' as timestamptz),
+            cast('b.jsonl' as varchar), cast(6 as bigint), cast(0 as bigint), cast(10 as integer),
+            cast(653 as integer), cast(15 as bigint), cast('cloudy' as varchar), cast(0 as integer)
+          union all
+          select
+            cast(1 as integer), cast('park_snapshot' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(5 as bigint), cast('s1-5' as varchar),
+            cast(1 as integer), cast(0 as integer), cast(5 as integer), cast(1004 as bigint),
+            cast('2026-09-30 23:30:00+00' as timestamptz), cast('2026-09-30 23:34:00+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(11 as bigint), cast(-9007199254740993 as bigint), cast(11 as integer),
+            cast(654 as integer), cast(16 as bigint), cast('snow' as varchar), cast(-12 as integer)
+          union all
+          select
+            cast(1 as integer), cast('park_snapshot' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(5 as bigint), cast('s1-5' as varchar),
+            cast(1 as integer), cast(0 as integer), cast(5 as integer), cast(1004 as bigint),
+            cast('2026-09-30 23:00:00+00' as timestamptz), cast('2026-09-30 23:34:00+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(31 as bigint), cast(3 as bigint), cast(110 as integer),
+            cast(504 as integer), cast(95 as bigint), cast(null as varchar), cast(null as integer)
+          union all
+          select
+            cast(1 as integer), cast('park_snapshot' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(6 as bigint), cast('s1-6' as varchar),
+            cast(1 as integer), cast(0 as integer), cast(6 as integer), cast(1005 as bigint),
+            cast('2026-09-30 23:15:00+00' as timestamptz), cast('2026-09-30 23:35:00+00' as timestamptz),
+            cast('b.jsonl' as varchar), cast(22 as bigint), cast(4 as bigint), cast(120 as integer),
+            cast(505 as integer), cast(94 as bigint), cast('blizzard' as varchar), cast(-30 as integer)
+          union all
+          select
+            cast(1 as integer), cast('park_snapshot' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(6 as bigint), cast('s1-6' as varchar),
+            cast(1 as integer), cast(0 as integer), cast(6 as integer), cast(1005 as bigint),
+            cast('2026-09-30 23:30:00+00' as timestamptz), cast('2026-09-30 23:35:00+00' as timestamptz),
+            cast('b.jsonl' as varchar), cast(3 as bigint), cast(250 as bigint), cast(12 as integer),
+            cast(655 as integer), cast(17 as bigint), cast('sunny' as varchar), cast(21 as integer)
+          union all
+          select
+            cast(1 as integer), cast('park_snapshot' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(9 as bigint), cast('s1-9' as varchar),
+            cast(1 as integer), cast(0 as integer), cast(9 as integer), cast(1009 as bigint),
+            cast('2026-09-30 23:10:00+00' as timestamptz), cast('2026-09-30 23:38:09+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(109 as bigint), cast(5 as bigint), cast(1 as integer),
+            cast(1 as integer), cast(1 as bigint), cast('rain' as varchar), cast(-40 as integer)
+          union all
+          select
+            cast(1 as integer), cast('park_snapshot' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(9 as bigint), cast('s1-9' as varchar),
+            cast(1 as integer), cast(0 as integer), cast(9 as integer), cast(1009 as bigint),
+            cast('2026-09-30 23:30:00+00' as timestamptz), cast('2026-09-30 23:38:09+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(12 as bigint), cast(1063 as bigint), cast(29 as integer),
+            cast(609 as integer), cast(109 as bigint), cast(null as varchar), cast(null as integer)
+          union all
+          select
+            cast(1 as integer), cast('park_snapshot' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(10 as bigint), cast('s1-10' as varchar),
+            cast(1 as integer), cast(0 as integer), cast(10 as integer), cast(1010 as bigint),
+            cast('2026-09-30 23:10:00+00' as timestamptz), cast('2026-09-30 23:38:10+00' as timestamptz),
+            cast('b.jsonl' as varchar), cast(110 as bigint), cast(5 as bigint), cast(1 as integer),
+            cast(1 as integer), cast(1 as bigint), cast('rain' as varchar), cast(-40 as integer)
+          union all
+          select
+            cast(1 as integer), cast('park_snapshot' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(10 as bigint), cast('s1-10' as varchar),
+            cast(1 as integer), cast(0 as integer), cast(10 as integer), cast(1010 as bigint),
+            cast('2026-09-30 23:30:00+00' as timestamptz), cast('2026-09-30 23:38:10+00' as timestamptz),
+            cast('b.jsonl' as varchar), cast(13 as bigint), cast(1070 as bigint), cast(30 as integer),
+            cast(610 as integer), cast(110 as bigint), cast('sunny' as varchar), cast(0 as integer)
+          union all
+          select
+            cast(1 as integer), cast('park_snapshot' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(11 as bigint), cast('s1-11' as varchar),
+            cast(1 as integer), cast(0 as integer), cast(11 as integer), cast(1011 as bigint),
+            cast('2026-09-30 23:10:00+00' as timestamptz), cast('2026-09-30 23:38:11+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(111 as bigint), cast(5 as bigint), cast(1 as integer),
+            cast(1 as integer), cast(1 as bigint), cast('rain' as varchar), cast(-40 as integer)
+          union all
+          select
+            cast(1 as integer), cast('park_snapshot' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(11 as bigint), cast('s1-11' as varchar),
+            cast(1 as integer), cast(0 as integer), cast(11 as integer), cast(1011 as bigint),
+            cast('2026-09-30 23:30:00+00' as timestamptz), cast('2026-09-30 23:38:11+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(14 as bigint), cast(1077 as bigint), cast(31 as integer),
+            cast(611 as integer), cast(111 as bigint), cast('sunny' as varchar), cast(1 as integer)
+          union all
+          select
+            cast(1 as integer), cast('park_snapshot' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(12 as bigint), cast('s1-12' as varchar),
+            cast(1 as integer), cast(0 as integer), cast(12 as integer), cast(1012 as bigint),
+            cast('2026-09-30 23:30:00+00' as timestamptz), cast('2026-09-30 23:38:12+00' as timestamptz),
+            cast('b.jsonl' as varchar), cast(15 as bigint), cast(1084 as bigint), cast(32 as integer),
+            cast(612 as integer), cast(112 as bigint), cast(null as varchar), cast(null as integer)
+          union all
+          select
+            cast(1 as integer), cast('park_snapshot' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(12 as bigint), cast('s1-12' as varchar),
+            cast(1 as integer), cast(0 as integer), cast(12 as integer), cast(1012 as bigint),
+            cast('2026-09-30 23:10:00+00' as timestamptz), cast('2026-09-30 23:38:12+00' as timestamptz),
+            cast('b.jsonl' as varchar), cast(112 as bigint), cast(5 as bigint), cast(1 as integer),
+            cast(1 as integer), cast(1 as bigint), cast('rain' as varchar), cast(-40 as integer)
+          union all
+          select
+            cast(1 as integer), cast('park_snapshot' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(13 as bigint), cast('s1-13' as varchar),
+            cast(1 as integer), cast(0 as integer), cast(13 as integer), cast(1013 as bigint),
+            cast('2026-09-30 23:10:00+00' as timestamptz), cast('2026-09-30 23:38:13+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(113 as bigint), cast(5 as bigint), cast(1 as integer),
+            cast(1 as integer), cast(1 as bigint), cast('rain' as varchar), cast(-40 as integer)
+          union all
+          select
+            cast(1 as integer), cast('park_snapshot' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(13 as bigint), cast('s1-13' as varchar),
+            cast(1 as integer), cast(0 as integer), cast(13 as integer), cast(1013 as bigint),
+            cast('2026-09-30 23:30:00+00' as timestamptz), cast('2026-09-30 23:38:13+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(16 as bigint), cast(1091 as bigint), cast(33 as integer),
+            cast(613 as integer), cast(113 as bigint), cast('sunny' as varchar), cast(3 as integer)
+          union all
+          select
+            cast(1 as integer), cast('park_snapshot' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(14 as bigint), cast('s1-14' as varchar),
+            cast(1 as integer), cast(0 as integer), cast(14 as integer), cast(1014 as bigint),
+            cast('2026-09-30 23:10:00+00' as timestamptz), cast('2026-09-30 23:38:14+00' as timestamptz),
+            cast('b.jsonl' as varchar), cast(114 as bigint), cast(5 as bigint), cast(1 as integer),
+            cast(1 as integer), cast(1 as bigint), cast('rain' as varchar), cast(-40 as integer)
+          union all
+          select
+            cast(1 as integer), cast('park_snapshot' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(14 as bigint), cast('s1-14' as varchar),
+            cast(1 as integer), cast(0 as integer), cast(14 as integer), cast(1014 as bigint),
+            cast('2026-09-30 23:30:00+00' as timestamptz), cast('2026-09-30 23:38:14+00' as timestamptz),
+            cast('b.jsonl' as varchar), cast(17 as bigint), cast(1098 as bigint), cast(34 as integer),
+            cast(614 as integer), cast(114 as bigint), cast('sunny' as varchar), cast(4 as integer)
+          union all
+          select
+            cast(1 as integer), cast('park_snapshot' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(15 as bigint), cast('s1-15' as varchar),
+            cast(1 as integer), cast(0 as integer), cast(15 as integer), cast(1015 as bigint),
+            cast('2026-09-30 23:10:00+00' as timestamptz), cast('2026-09-30 23:38:15+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(115 as bigint), cast(5 as bigint), cast(1 as integer),
+            cast(1 as integer), cast(1 as bigint), cast('rain' as varchar), cast(-40 as integer)
+          union all
+          select
+            cast(1 as integer), cast('park_snapshot' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(15 as bigint), cast('s1-15' as varchar),
+            cast(1 as integer), cast(0 as integer), cast(15 as integer), cast(1015 as bigint),
+            cast('2026-09-30 23:30:00+00' as timestamptz), cast('2026-09-30 23:38:15+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(18 as bigint), cast(1105 as bigint), cast(35 as integer),
+            cast(615 as integer), cast(115 as bigint), cast(null as varchar), cast(null as integer)
+          union all
+          select
+            cast(1 as integer), cast('park_snapshot' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(16 as bigint), cast('s1-16' as varchar),
+            cast(1 as integer), cast(0 as integer), cast(16 as integer), cast(1016 as bigint),
+            cast('2026-09-30 23:30:00+00' as timestamptz), cast('2026-09-30 23:38:16+00' as timestamptz),
+            cast('b.jsonl' as varchar), cast(19 as bigint), cast(1112 as bigint), cast(36 as integer),
+            cast(616 as integer), cast(116 as bigint), cast('sunny' as varchar), cast(6 as integer)
+          union all
+          select
+            cast(1 as integer), cast('park_snapshot' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(16 as bigint), cast('s1-16' as varchar),
+            cast(1 as integer), cast(0 as integer), cast(16 as integer), cast(1016 as bigint),
+            cast('2026-09-30 23:10:00+00' as timestamptz), cast('2026-09-30 23:38:16+00' as timestamptz),
+            cast('b.jsonl' as varchar), cast(116 as bigint), cast(5 as bigint), cast(1 as integer),
+            cast(1 as integer), cast(1 as bigint), cast('rain' as varchar), cast(-40 as integer)
+          union all
+          select
+            cast(1 as integer), cast('park_snapshot' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(17 as bigint), cast('s1-17' as varchar),
+            cast(1 as integer), cast(0 as integer), cast(17 as integer), cast(1017 as bigint),
+            cast('2026-09-30 23:10:00+00' as timestamptz), cast('2026-09-30 23:38:17+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(117 as bigint), cast(5 as bigint), cast(1 as integer),
+            cast(1 as integer), cast(1 as bigint), cast('rain' as varchar), cast(-40 as integer)
+          union all
+          select
+            cast(1 as integer), cast('park_snapshot' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(17 as bigint), cast('s1-17' as varchar),
+            cast(1 as integer), cast(0 as integer), cast(17 as integer), cast(1017 as bigint),
+            cast('2026-09-30 23:30:00+00' as timestamptz), cast('2026-09-30 23:38:17+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(20 as bigint), cast(1119 as bigint), cast(37 as integer),
+            cast(617 as integer), cast(117 as bigint), cast('sunny' as varchar), cast(7 as integer)
+          union all
+          select
+            cast(1 as integer), cast('park_snapshot' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(18 as bigint), cast('s1-18' as varchar),
+            cast(1 as integer), cast(0 as integer), cast(18 as integer), cast(1018 as bigint),
+            cast('2026-09-30 23:10:00+00' as timestamptz), cast('2026-09-30 23:38:18+00' as timestamptz),
+            cast('b.jsonl' as varchar), cast(118 as bigint), cast(5 as bigint), cast(1 as integer),
+            cast(1 as integer), cast(1 as bigint), cast('rain' as varchar), cast(-40 as integer)
+          union all
+          select
+            cast(1 as integer), cast('park_snapshot' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(18 as bigint), cast('s1-18' as varchar),
+            cast(1 as integer), cast(0 as integer), cast(18 as integer), cast(1018 as bigint),
+            cast('2026-09-30 23:30:00+00' as timestamptz), cast('2026-09-30 23:38:18+00' as timestamptz),
+            cast('b.jsonl' as varchar), cast(21 as bigint), cast(1126 as bigint), cast(38 as integer),
+            cast(618 as integer), cast(118 as bigint), cast(null as varchar), cast(null as integer)
+          union all
+          select
+            cast(1 as integer), cast('park_snapshot' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(19 as bigint), cast('s1-19' as varchar),
+            cast(1 as integer), cast(0 as integer), cast(19 as integer), cast(1019 as bigint),
+            cast('2026-09-30 23:10:00+00' as timestamptz), cast('2026-09-30 23:38:19+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(119 as bigint), cast(5 as bigint), cast(1 as integer),
+            cast(1 as integer), cast(1 as bigint), cast('rain' as varchar), cast(-40 as integer)
+          union all
+          select
+            cast(1 as integer), cast('park_snapshot' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(19 as bigint), cast('s1-19' as varchar),
+            cast(1 as integer), cast(0 as integer), cast(19 as integer), cast(1019 as bigint),
+            cast('2026-09-30 23:30:00+00' as timestamptz), cast('2026-09-30 23:38:19+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(22 as bigint), cast(1133 as bigint), cast(39 as integer),
+            cast(619 as integer), cast(119 as bigint), cast('sunny' as varchar), cast(9 as integer)
+          union all
+          select
+            cast(1 as integer), cast('park_snapshot' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(20 as bigint), cast('s1-20' as varchar),
+            cast(1 as integer), cast(0 as integer), cast(20 as integer), cast(1020 as bigint),
+            cast('2026-09-30 23:30:00+00' as timestamptz), cast('2026-09-30 23:38:20+00' as timestamptz),
+            cast('b.jsonl' as varchar), cast(23 as bigint), cast(1140 as bigint), cast(40 as integer),
+            cast(620 as integer), cast(120 as bigint), cast('sunny' as varchar), cast(10 as integer)
+          union all
+          select
+            cast(1 as integer), cast('park_snapshot' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(20 as bigint), cast('s1-20' as varchar),
+            cast(1 as integer), cast(0 as integer), cast(20 as integer), cast(1020 as bigint),
+            cast('2026-09-30 23:10:00+00' as timestamptz), cast('2026-09-30 23:38:20+00' as timestamptz),
+            cast('b.jsonl' as varchar), cast(120 as bigint), cast(5 as bigint), cast(1 as integer),
+            cast(1 as integer), cast(1 as bigint), cast('rain' as varchar), cast(-40 as integer)
+          union all
+          select
+            cast(1 as integer), cast('park_snapshot' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(7 as bigint), cast('s1-7' as varchar),
+            cast(1 as integer), cast(0 as integer), cast(7 as integer), cast(1006 as bigint),
+            cast('2026-09-30 23:35:00+00' as timestamptz), cast('2026-09-30 23:37:00+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(1 as bigint), cast(6 as bigint), cast(130 as integer),
+            cast(506 as integer), cast(93 as bigint), cast('rain' as varchar), cast(3 as integer)
+          union all
+          select
+            cast(1 as integer), cast('park_snapshot' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(7 as bigint), cast('s1-7' as varchar),
+            cast(1 as integer), cast(0 as integer), cast(7 as integer), cast(1006 as bigint),
+            cast('2026-09-30 23:30:00+00' as timestamptz), cast('2026-09-30 23:36:00+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(90 as bigint), cast(300 as bigint), cast(13 as integer),
+            cast(656 as integer), cast(18 as bigint), cast('sunny' as varchar), cast(22 as integer)
+          union all
+          select
+            cast(1 as integer), cast('park_snapshot' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(8 as bigint), cast('s1-8' as varchar),
+            cast(1 as integer), cast(0 as integer), cast(8 as integer), cast(1007 as bigint),
+            cast('2026-09-30 23:40:00+00' as timestamptz), cast('2026-09-30 23:41:00+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(12 as bigint), cast(10 as bigint), cast(14 as integer),
+            cast(657 as integer), cast(19 as bigint), cast('sunny' as varchar), cast(23 as integer)
+          union all
+          select
+            cast(1 as integer), cast('park_snapshot' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(21 as bigint), cast('s1-21' as varchar),
+            cast(1 as integer), cast(0 as integer), cast(21 as integer), cast(1021 as bigint),
+            cast('2026-09-30 23:20:00+00' as timestamptz), cast('2026-09-30 23:42:00+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(20 as bigint), cast(2100 as bigint), cast(21 as integer),
+            cast(621 as integer), cast(121 as bigint), cast('sunny' as varchar), cast(21 as integer)
+          union all
+          select
+            cast(1 as integer), cast('park_snapshot' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(21 as bigint), cast('s1-21' as varchar),
+            cast(1 as integer), cast(0 as integer), cast(21 as integer), cast(1021 as bigint),
+            cast('2026-09-30 23:30:00+00' as timestamptz), cast('2026-09-30 23:42:00+00' as timestamptz),
+            cast('b.jsonl' as varchar), cast(1 as bigint), cast(9900 as bigint), cast(99 as integer),
+            cast(699 as integer), cast(199 as bigint), cast('storm' as varchar), cast(-21 as integer)
+    expect:
+      format: sql
+      rows: |
+        select
+          cast(1 as integer) as schema_version, cast('park_snapshot' as varchar) as event_type,
+          cast('0.3.0' as varchar) as plugin_version, cast('kpark1' as varchar) as park_id,
+          cast('s1' as varchar) as session_id, cast(1 as bigint) as seq, cast('s1-1' as varchar) as event_id,
+          cast(1 as integer) as game_year, cast(0 as integer) as game_month, cast(1 as integer) as game_day,
+          cast(1000 as bigint) as game_ticks_elapsed, cast('2026-09-30 23:30:00+00' as timestamptz) as emitted_at,
+          cast('2026-09-30 23:31:00+00' as timestamptz) as received_at, cast('a.jsonl' as varchar) as _raw_file,
+          cast(4 as bigint) as _raw_line, cast(1234.50 as decimal(18, 2)) as cash_usd,
+          cast(7 as integer) as guests_in_park, cast(650 as integer) as park_rating,
+          cast(12 as bigint) as total_admissions, cast('sunny' as varchar) as weather,
+          cast(18 as integer) as temperature_c
+        union all
+        select
+          cast(1 as integer), cast('park_snapshot' as varchar), cast('0.3.0' as varchar),
+          cast('kpark1' as varchar), cast('s1' as varchar), cast(2 as bigint), cast('s1-2' as varchar),
+          cast(1 as integer), cast(0 as integer), cast(2 as integer), cast(1001 as bigint),
+          cast('2026-09-30 23:30:00+00' as timestamptz), cast('2026-09-30 23:31:00+00' as timestamptz),
+          cast('a.jsonl' as varchar), cast(5 as bigint), cast(-0.70 as decimal(18, 2)), cast(8 as integer),
+          cast(651 as integer), cast(13 as bigint), cast('rain' as varchar), cast(-3 as integer)
+        union all
+        select
+          cast(1 as integer), cast('park_snapshot' as varchar), cast('0.3.0' as varchar),
+          cast('kpark1' as varchar), cast('s1' as varchar), cast(3 as bigint), cast('s1-3' as varchar),
+          cast(1 as integer), cast(0 as integer), cast(3 as integer), cast(1002 as bigint),
+          cast('2026-09-30 23:30:00+00' as timestamptz), cast('2026-09-30 23:32:00+00' as timestamptz),
+          cast('b.jsonl' as varchar), cast(2 as bigint), cast(900719925474099.30 as decimal(18, 2)),
+          cast(9 as integer), cast(652 as integer), cast(14 as bigint), cast(null as varchar),
+          cast(null as integer)
+        union all
+        select
+          cast(1 as integer), cast('park_snapshot' as varchar), cast('0.3.0' as varchar),
+          cast('kpark1' as varchar), cast('s1' as varchar), cast(4 as bigint), cast('s1-4' as varchar),
+          cast(1 as integer), cast(0 as integer), cast(4 as integer), cast(1003 as bigint),
+          cast('2026-09-30 23:30:00+00' as timestamptz), cast('2026-09-30 23:33:00+00' as timestamptz),
+          cast('b.jsonl' as varchar), cast(6 as bigint), cast(0.00 as decimal(18, 2)), cast(10 as integer),
+          cast(653 as integer), cast(15 as bigint), cast('cloudy' as varchar), cast(0 as integer)
+        union all
+        select
+          cast(1 as integer), cast('park_snapshot' as varchar), cast('0.3.0' as varchar),
+          cast('kpark1' as varchar), cast('s1' as varchar), cast(5 as bigint), cast('s1-5' as varchar),
+          cast(1 as integer), cast(0 as integer), cast(5 as integer), cast(1004 as bigint),
+          cast('2026-09-30 23:30:00+00' as timestamptz), cast('2026-09-30 23:34:00+00' as timestamptz),
+          cast('a.jsonl' as varchar), cast(11 as bigint), cast(-900719925474099.30 as decimal(18, 2)),
+          cast(11 as integer), cast(654 as integer), cast(16 as bigint), cast('snow' as varchar),
+          cast(-12 as integer)
+        union all
+        select
+          cast(1 as integer), cast('park_snapshot' as varchar), cast('0.3.0' as varchar),
+          cast('kpark1' as varchar), cast('s1' as varchar), cast(6 as bigint), cast('s1-6' as varchar),
+          cast(1 as integer), cast(0 as integer), cast(6 as integer), cast(1005 as bigint),
+          cast('2026-09-30 23:30:00+00' as timestamptz), cast('2026-09-30 23:35:00+00' as timestamptz),
+          cast('b.jsonl' as varchar), cast(3 as bigint), cast(25.00 as decimal(18, 2)), cast(12 as integer),
+          cast(655 as integer), cast(17 as bigint), cast('sunny' as varchar), cast(21 as integer)
+        union all
+        select
+          cast(1 as integer), cast('park_snapshot' as varchar), cast('0.3.0' as varchar),
+          cast('kpark1' as varchar), cast('s1' as varchar), cast(9 as bigint), cast('s1-9' as varchar),
+          cast(1 as integer), cast(0 as integer), cast(9 as integer), cast(1009 as bigint),
+          cast('2026-09-30 23:30:00+00' as timestamptz), cast('2026-09-30 23:38:09+00' as timestamptz),
+          cast('a.jsonl' as varchar), cast(12 as bigint), cast(106.30 as decimal(18, 2)), cast(29 as integer),
+          cast(609 as integer), cast(109 as bigint), cast(null as varchar), cast(null as integer)
+        union all
+        select
+          cast(1 as integer), cast('park_snapshot' as varchar), cast('0.3.0' as varchar),
+          cast('kpark1' as varchar), cast('s1' as varchar), cast(10 as bigint), cast('s1-10' as varchar),
+          cast(1 as integer), cast(0 as integer), cast(10 as integer), cast(1010 as bigint),
+          cast('2026-09-30 23:30:00+00' as timestamptz), cast('2026-09-30 23:38:10+00' as timestamptz),
+          cast('b.jsonl' as varchar), cast(13 as bigint), cast(107.00 as decimal(18, 2)), cast(30 as integer),
+          cast(610 as integer), cast(110 as bigint), cast('sunny' as varchar), cast(0 as integer)
+        union all
+        select
+          cast(1 as integer), cast('park_snapshot' as varchar), cast('0.3.0' as varchar),
+          cast('kpark1' as varchar), cast('s1' as varchar), cast(11 as bigint), cast('s1-11' as varchar),
+          cast(1 as integer), cast(0 as integer), cast(11 as integer), cast(1011 as bigint),
+          cast('2026-09-30 23:30:00+00' as timestamptz), cast('2026-09-30 23:38:11+00' as timestamptz),
+          cast('a.jsonl' as varchar), cast(14 as bigint), cast(107.70 as decimal(18, 2)), cast(31 as integer),
+          cast(611 as integer), cast(111 as bigint), cast('sunny' as varchar), cast(1 as integer)
+        union all
+        select
+          cast(1 as integer), cast('park_snapshot' as varchar), cast('0.3.0' as varchar),
+          cast('kpark1' as varchar), cast('s1' as varchar), cast(12 as bigint), cast('s1-12' as varchar),
+          cast(1 as integer), cast(0 as integer), cast(12 as integer), cast(1012 as bigint),
+          cast('2026-09-30 23:30:00+00' as timestamptz), cast('2026-09-30 23:38:12+00' as timestamptz),
+          cast('b.jsonl' as varchar), cast(15 as bigint), cast(108.40 as decimal(18, 2)), cast(32 as integer),
+          cast(612 as integer), cast(112 as bigint), cast(null as varchar), cast(null as integer)
+        union all
+        select
+          cast(1 as integer), cast('park_snapshot' as varchar), cast('0.3.0' as varchar),
+          cast('kpark1' as varchar), cast('s1' as varchar), cast(13 as bigint), cast('s1-13' as varchar),
+          cast(1 as integer), cast(0 as integer), cast(13 as integer), cast(1013 as bigint),
+          cast('2026-09-30 23:30:00+00' as timestamptz), cast('2026-09-30 23:38:13+00' as timestamptz),
+          cast('a.jsonl' as varchar), cast(16 as bigint), cast(109.10 as decimal(18, 2)), cast(33 as integer),
+          cast(613 as integer), cast(113 as bigint), cast('sunny' as varchar), cast(3 as integer)
+        union all
+        select
+          cast(1 as integer), cast('park_snapshot' as varchar), cast('0.3.0' as varchar),
+          cast('kpark1' as varchar), cast('s1' as varchar), cast(14 as bigint), cast('s1-14' as varchar),
+          cast(1 as integer), cast(0 as integer), cast(14 as integer), cast(1014 as bigint),
+          cast('2026-09-30 23:30:00+00' as timestamptz), cast('2026-09-30 23:38:14+00' as timestamptz),
+          cast('b.jsonl' as varchar), cast(17 as bigint), cast(109.80 as decimal(18, 2)), cast(34 as integer),
+          cast(614 as integer), cast(114 as bigint), cast('sunny' as varchar), cast(4 as integer)
+        union all
+        select
+          cast(1 as integer), cast('park_snapshot' as varchar), cast('0.3.0' as varchar),
+          cast('kpark1' as varchar), cast('s1' as varchar), cast(15 as bigint), cast('s1-15' as varchar),
+          cast(1 as integer), cast(0 as integer), cast(15 as integer), cast(1015 as bigint),
+          cast('2026-09-30 23:30:00+00' as timestamptz), cast('2026-09-30 23:38:15+00' as timestamptz),
+          cast('a.jsonl' as varchar), cast(18 as bigint), cast(110.50 as decimal(18, 2)), cast(35 as integer),
+          cast(615 as integer), cast(115 as bigint), cast(null as varchar), cast(null as integer)
+        union all
+        select
+          cast(1 as integer), cast('park_snapshot' as varchar), cast('0.3.0' as varchar),
+          cast('kpark1' as varchar), cast('s1' as varchar), cast(16 as bigint), cast('s1-16' as varchar),
+          cast(1 as integer), cast(0 as integer), cast(16 as integer), cast(1016 as bigint),
+          cast('2026-09-30 23:30:00+00' as timestamptz), cast('2026-09-30 23:38:16+00' as timestamptz),
+          cast('b.jsonl' as varchar), cast(19 as bigint), cast(111.20 as decimal(18, 2)), cast(36 as integer),
+          cast(616 as integer), cast(116 as bigint), cast('sunny' as varchar), cast(6 as integer)
+        union all
+        select
+          cast(1 as integer), cast('park_snapshot' as varchar), cast('0.3.0' as varchar),
+          cast('kpark1' as varchar), cast('s1' as varchar), cast(17 as bigint), cast('s1-17' as varchar),
+          cast(1 as integer), cast(0 as integer), cast(17 as integer), cast(1017 as bigint),
+          cast('2026-09-30 23:30:00+00' as timestamptz), cast('2026-09-30 23:38:17+00' as timestamptz),
+          cast('a.jsonl' as varchar), cast(20 as bigint), cast(111.90 as decimal(18, 2)), cast(37 as integer),
+          cast(617 as integer), cast(117 as bigint), cast('sunny' as varchar), cast(7 as integer)
+        union all
+        select
+          cast(1 as integer), cast('park_snapshot' as varchar), cast('0.3.0' as varchar),
+          cast('kpark1' as varchar), cast('s1' as varchar), cast(18 as bigint), cast('s1-18' as varchar),
+          cast(1 as integer), cast(0 as integer), cast(18 as integer), cast(1018 as bigint),
+          cast('2026-09-30 23:30:00+00' as timestamptz), cast('2026-09-30 23:38:18+00' as timestamptz),
+          cast('b.jsonl' as varchar), cast(21 as bigint), cast(112.60 as decimal(18, 2)), cast(38 as integer),
+          cast(618 as integer), cast(118 as bigint), cast(null as varchar), cast(null as integer)
+        union all
+        select
+          cast(1 as integer), cast('park_snapshot' as varchar), cast('0.3.0' as varchar),
+          cast('kpark1' as varchar), cast('s1' as varchar), cast(19 as bigint), cast('s1-19' as varchar),
+          cast(1 as integer), cast(0 as integer), cast(19 as integer), cast(1019 as bigint),
+          cast('2026-09-30 23:30:00+00' as timestamptz), cast('2026-09-30 23:38:19+00' as timestamptz),
+          cast('a.jsonl' as varchar), cast(22 as bigint), cast(113.30 as decimal(18, 2)), cast(39 as integer),
+          cast(619 as integer), cast(119 as bigint), cast('sunny' as varchar), cast(9 as integer)
+        union all
+        select
+          cast(1 as integer), cast('park_snapshot' as varchar), cast('0.3.0' as varchar),
+          cast('kpark1' as varchar), cast('s1' as varchar), cast(20 as bigint), cast('s1-20' as varchar),
+          cast(1 as integer), cast(0 as integer), cast(20 as integer), cast(1020 as bigint),
+          cast('2026-09-30 23:30:00+00' as timestamptz), cast('2026-09-30 23:38:20+00' as timestamptz),
+          cast('b.jsonl' as varchar), cast(23 as bigint), cast(114.00 as decimal(18, 2)), cast(40 as integer),
+          cast(620 as integer), cast(120 as bigint), cast('sunny' as varchar), cast(10 as integer)
+        union all
+        select
+          cast(1 as integer), cast('park_snapshot' as varchar), cast('0.3.0' as varchar),
+          cast('kpark1' as varchar), cast('s1' as varchar), cast(7 as bigint), cast('s1-7' as varchar),
+          cast(1 as integer), cast(0 as integer), cast(7 as integer), cast(1006 as bigint),
+          cast('2026-09-30 23:30:00+00' as timestamptz), cast('2026-09-30 23:36:00+00' as timestamptz),
+          cast('a.jsonl' as varchar), cast(90 as bigint), cast(30.00 as decimal(18, 2)), cast(13 as integer),
+          cast(656 as integer), cast(18 as bigint), cast('sunny' as varchar), cast(22 as integer)
+        union all
+        select
+          cast(1 as integer), cast('park_snapshot' as varchar), cast('0.3.0' as varchar),
+          cast('kpark1' as varchar), cast('s1' as varchar), cast(8 as bigint), cast('s1-8' as varchar),
+          cast(1 as integer), cast(0 as integer), cast(8 as integer), cast(1007 as bigint),
+          cast('2026-09-30 23:40:00+00' as timestamptz), cast('2026-09-30 23:41:00+00' as timestamptz),
+          cast('a.jsonl' as varchar), cast(12 as bigint), cast(1.00 as decimal(18, 2)), cast(14 as integer),
+          cast(657 as integer), cast(19 as bigint), cast('sunny' as varchar), cast(23 as integer)
+        union all
+        select
+          cast(1 as integer), cast('park_snapshot' as varchar), cast('0.3.0' as varchar),
+          cast('kpark1' as varchar), cast('s1' as varchar), cast(21 as bigint), cast('s1-21' as varchar),
+          cast(1 as integer), cast(0 as integer), cast(21 as integer), cast(1021 as bigint),
+          cast('2026-09-30 23:20:00+00' as timestamptz), cast('2026-09-30 23:42:00+00' as timestamptz),
+          cast('a.jsonl' as varchar), cast(20 as bigint), cast(210.00 as decimal(18, 2)), cast(21 as integer),
+          cast(621 as integer), cast(121 as bigint), cast('sunny' as varchar), cast(21 as integer)

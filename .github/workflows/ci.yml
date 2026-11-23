@@ -1,0 +1,43 @@
+# CI runs once per pull request and skips the pytest suite, because the monthly
+# Actions minutes are limited and the local gate runs the full suite on every change.
+name: CI
+
+on:
+  pull_request:
+    branches: [develop, main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      # Full history, so origin/develop exists for the contract breaking-change check.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+      - name: Install uv
+        run: pip install uv
+      - name: Cache uv downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/uv
+          key: ${{ runner.os }}-uv-${{ hashFiles('uv.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-uv-
+      - name: Install dependencies
+        run: uv sync
+      - name: Install npm packages
+        run: npm ci --ignore-scripts
+      - name: Run canonical gate
+        run: make check CHECK_TESTS=

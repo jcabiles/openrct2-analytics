@@ -1,0 +1,47 @@
+# Numbers "How it was built" shows as plain copy, outside any figure region ("Numbers kept as copy"
+# in docs/ai-dlc/specs/site-mockup-port.md). Each `shown` text must appear in every build; each
+# `phrases` entry must be found, as a fixed string, in `source`.
+
+[[kept]]
+id = "K8"
+where = "data stack: the game's version"
+shown = ["OpenRCT2 0.5.6"]
+source = "AGENTS.md"
+phrases = ["OpenRCT2 0.5.6"]
+
+[[kept]]
+id = "K9"
+where = "data stack: the plugin language and the version pinned for ES5"
+shown = ["5.9.3", "TypeScript 5.9"]
+source = "package.json"
+phrases = ['"typescript": "5.9.3"']
+
+[[kept]]
+id = "K10"
+where = "data stack: the Python and Node versions"
+shown = ["Python 3.12", "Node 24"]
+source = "README.md"
+phrases = ["Python 3.12", "Node 24"]
+
+[[kept]]
+id = "K11"
+where = "data stack: the site generator and chart library versions"
+shown = ["Eleventy 3.1.6", "0.6.17"]
+source = "package.json"
+phrases = ['"@11ty/eleventy": "3.1.6"', '"@observablehq/plot": "0.6.17"']
+
+[[kept]]
+id = "K12"
+where = "data stack: the dbt line"
+shown = ["dbt 1.x"]
+source = "docs/adr/0004-dbt-core-1x-on-duckdb.md"
+phrases = ["1.x"]
+
+# K13 is read from contracts/*.odcs.yaml when the page is built (`contracts` in
+# site/eleventy.config.mjs); the test computes the same line from those files, so a re-version
+# or a added or removed contract never leaves it stale.
+[[kept]]
+id = "K13"
+where = "data stack: the contract count and their shared version"
+dynamic = "contracts"
+shown = []

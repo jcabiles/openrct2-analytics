@@ -1,0 +1,244 @@
+version: 2
+
+models:
+  - name: obt_park_month
+    description: >-
+      Answers how much a park earned, spent and operated in each kept closed
+      statement month. Grain: one row per park per kept statement month (a
+      closed game month); key: park_month_key, matching fct_park_month. It
+      reads only the park-month and park-day facts. Only months with a kept
+      statement have rows; for example, a month whose statement was not kept
+      has no row (on the sample, June). A statement month with no kept
+      park-days has zero operating days and days with visits, null guest
+      visits and rating sum, and a null average rating and ratios. Unit: US
+      dollars, guests, days and rating points as stated per measure; clock:
+      company date (month). On the zero-row build the model is empty because
+      there are no kept statements.
+    config:
+      contract:
+        enforced: true
+    meta:
+      expected_min_rows: 1
+    data_tests:
+      - rows_on_sample:
+          arguments:
+            expected: 3
+    columns:
+      - name: park_month_key
+        data_type: varchar
+        description: "Key matching the kept park statement month; unit: text; clock: company date (month)."
+        data_tests:
+          - unique
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('fct_park_month')
+                field: park_month_key
+      - name: park_id
+        data_type: varchar
+        description: "Stable park identifier; unit: text; clock: company date (month)."
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_park')
+                field: park_id
+      - name: statement_year
+        data_type: integer
+        description: "In-game statement year; unit: year; clock: game calendar (month)."
+      - name: statement_month
+        data_type: integer
+        description: "In-game statement month, numbered 0 to 7; unit: month; clock: game calendar (month)."
+      - name: company_year
+        data_type: integer
+        description: "Company year for the statement; unit: year; clock: company date (month)."
+        data_tests:
+          - not_null
+      - name: company_date
+        data_type: date
+        description: "First day of the statement's company month; unit: date; clock: company date (month)."
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: company_date
+      - name: operating_profit
+        data_type: decimal(18,2)
+        description: "Park operating profit from the kept statement; unit: US dollars; clock: company date (month)."
+        data_tests:
+          - not_null
+      - name: operating_revenue
+        data_type: decimal(18,2)
+        description: "Ride, food and drink, merchandise, and entrance revenue summed from the kept statement; unit: US dollars; clock: company date (month)."
+      - name: ride_revenue
+        data_type: decimal(18,2)
+        description: "Revenue from ride tickets; unit: US dollars; clock: company date (month)."
+      - name: food_drink_revenue
+        data_type: decimal(18,2)
+        description: "Revenue from food and drink sales; unit: US dollars; clock: company date (month)."
+      - name: merchandise_revenue
+        data_type: decimal(18,2)
+        description: "Revenue from shop sales; unit: US dollars; clock: company date (month)."
+      - name: entrance_revenue
+        data_type: decimal(18,2)
+        description: "Revenue from park entrance tickets; unit: US dollars; clock: company date (month)."
+      - name: operating_costs
+        data_type: decimal(18,2)
+        description: "Ride running costs, wages, stock, marketing and research costs summed from the kept statement; costs are negative; unit: US dollars; clock: company date (month)."
+      - name: ride_running_costs
+        data_type: decimal(18,2)
+        description: "Costs to run rides; costs are negative; unit: US dollars; clock: company date (month)."
+      - name: staff_wages
+        data_type: decimal(18,2)
+        description: "Staff wages; costs are negative; unit: US dollars; clock: company date (month)."
+      - name: stock_costs
+        data_type: decimal(18,2)
+        description: "Shop and food and drink stock costs; costs are negative; unit: US dollars; clock: company date (month)."
+      - name: marketing_costs
+        data_type: decimal(18,2)
+        description: "Marketing costs; costs are negative; unit: US dollars; clock: company date (month)."
+      - name: research_costs
+        data_type: decimal(18,2)
+        description: "Research costs; costs are negative; unit: US dollars; clock: company date (month)."
+      - name: capital_spending
+        data_type: decimal(18,2)
+        description: "Capital spending from the kept statement; unit: US dollars; clock: company date (month)."
+      - name: interest_costs
+        data_type: decimal(18,2)
+        description: "Interest costs from the kept statement; costs are negative; unit: US dollars; clock: company date (month)."
+      - name: guest_visits
+        data_type: bigint
+        description: "Admissions increase summed over kept park-days; null if there are no kept park-days. Each session's last kept day has no admissions figure, so days_with_visits can be below operating_days and guest_visits misses that day's visits. Unit: guests; clock: company date (month)."
+      - name: operating_days
+        data_type: integer
+        description: "Count of kept park-days in the statement month; unit: days; clock: company date (month)."
+        data_tests:
+          - not_null
+      - name: days_with_visits
+        data_type: integer
+        description: "Kept park-days of the month with an admissions figure; each session's last kept day has none, so this can be below operating_days and guest_visits misses that day's visits; unit: days; clock: company date (month)."
+        data_tests:
+          - not_null
+      - name: park_rating_sum
+        data_type: bigint
+        description: "Sum of park ratings at the start of kept park-days; null if there are no kept park-days; unit: rating points; clock: company date (month)."
+      - name: average_park_rating
+        data_type: decimal(18,2)
+        description: "park_rating_sum divided by operating_days, never an average of averages; null when there are no operating days; range 0 to 999 rating points; unit: rating points; clock: company date (month)."
+      - name: revenue_per_visit
+        data_type: decimal(18,2)
+        description: "operating_revenue divided by guest_visits after summing
+          the month's statement lines; unit: US dollars per guest; clock:
+          company date (month). Statement revenue covers the whole game month,
+          while visits and days count only captured park-days, so a month with few captured days reads high and a month with no captured days is null."
+      - name: ride_revenue_per_visit
+        data_type: decimal(18,2)
+        description: "ride_revenue divided by guest_visits after summing the
+          month's statement lines; unit: US dollars per guest; clock: company
+          date (month). Statement revenue covers the whole game month, while
+          visits and days count only captured park-days, so a month with few captured days reads high and a month with no captured days is null."
+      - name: food_drink_revenue_per_visit
+        data_type: decimal(18,2)
+        description: "food_drink_revenue divided by guest_visits after summing
+          the month's statement lines; unit: US dollars per guest; clock:
+          company date (month). Statement revenue covers the whole game month,
+          while visits and days count only captured park-days, so a month with few captured days reads high and a month with no captured days is null."
+      - name: merchandise_revenue_per_visit
+        data_type: decimal(18,2)
+        description: "merchandise_revenue divided by guest_visits after summing
+          the month's statement lines; unit: US dollars per guest; clock:
+          company date (month). Statement revenue covers the whole game month,
+          while visits and days count only captured park-days, so a month with few captured days reads high and a month with no captured days is null."
+      - name: entrance_revenue_per_visit
+        data_type: decimal(18,2)
+        description: "entrance_revenue divided by guest_visits after summing
+          the month's statement lines; unit: US dollars per guest; clock:
+          company date (month). Statement revenue covers the whole game month, while visits and days count only captured park-days, so a month with few captured days reads high and a month with no captured days is null."
+      - name: ride_revenue_share_pct
+        data_type: decimal(18,2)
+        description: "100 times ride_revenue divided by operating_revenue; unit: percent of operating revenue; clock: company date (month). Null when operating_revenue is null or 0. The four shares add to 100 within 0.04 of rounding."
+      - name: food_drink_revenue_share_pct
+        data_type: decimal(18,2)
+        description: "100 times food_drink_revenue divided by operating_revenue; unit: percent of operating revenue; clock: company date (month). Null when operating_revenue is null or 0. The four shares add to 100 within 0.04 of rounding."
+      - name: merchandise_revenue_share_pct
+        data_type: decimal(18,2)
+        description: "100 times merchandise_revenue divided by operating_revenue; unit: percent of operating revenue; clock: company date (month). Null when operating_revenue is null or 0. The four shares add to 100 within 0.04 of rounding. On-ride photo sales are counted in merchandise."
+      - name: entrance_revenue_share_pct
+        data_type: decimal(18,2)
+        description: "100 times entrance_revenue divided by operating_revenue; unit: percent of operating revenue; clock: company date (month). Null when operating_revenue is null or 0. The four shares add to 100 within 0.04 of rounding."
+      - name: revenue_per_operating_day
+        data_type: decimal(18,2)
+        description: "operating_revenue divided by operating_days after summing
+          the month's statement lines; unit: US dollars per operating day;
+          clock: company date (month). Statement revenue covers the whole game
+          month, while visits and days count only captured park-days, so a month with few captured days reads high and a month with no captured days is null."
+
+unit_tests:
+  - name: obt_park_month_keeps_statement_months_and_pools_park_day_ratings
+    description: >-
+      It proves that only kept statement months appear, park-days without a
+      statement, including one of another game year, are excluded, an empty statement month has null rating and
+      ratios, park-day ratings are pooled, and a rating sum of 1601 over three
+      days is rounded to 533.67. Three ratings of 800, 800 and 500 give
+      700.00, the rating sum over the month's park-days divided by its day
+      count; the pooling across parks is tested in obt_company_month (U2).
+    model: obt_park_month
+    given:
+      - input: ref('fct_park_month')
+        format: sql
+        rows: |
+          select cast('park_a|9|0' as varchar) as park_month_key, cast('park_a' as varchar) as park_id, cast(9 as integer) as statement_year, cast(0 as integer) as statement_month, cast(2000 as integer) as company_year, cast('2000-03-01' as date) as statement_company_date, cast(160.00 as decimal(18,2)) as operating_profit, cast(100.00 as decimal(18,2)) as park_ride_tickets_usd, cast(20.00 as decimal(18,2)) as food_drink_sales_usd, cast(30.00 as decimal(18,2)) as shop_sales_usd, cast(50.00 as decimal(18,2)) as park_entrance_tickets_usd, cast(-10.00 as decimal(18,2)) as ride_runningcosts_usd, cast(-20.00 as decimal(18,2)) as wages_usd, cast(-3.00 as decimal(18,2)) as shop_stock_usd, cast(-2.00 as decimal(18,2)) as food_drink_stock_usd, cast(-4.00 as decimal(18,2)) as marketing_usd, cast(-1.00 as decimal(18,2)) as research_usd, cast(-7.00 as decimal(18,2)) as capital_spending, cast(-0.50 as decimal(18,2)) as interest_usd
+          union all
+          select cast('park_a|9|1' as varchar), cast('park_a' as varchar), cast(9 as integer), cast(1 as integer), cast(2000 as integer), cast('2000-04-01' as date), cast(76.00 as decimal(18,2)), cast(60.00 as decimal(18,2)), cast(12.00 as decimal(18,2)), cast(8.00 as decimal(18,2)), cast(20.00 as decimal(18,2)), cast(-6.00 as decimal(18,2)), cast(-10.00 as decimal(18,2)), cast(-2.00 as decimal(18,2)), cast(-2.00 as decimal(18,2)), cast(-3.00 as decimal(18,2)), cast(-1.00 as decimal(18,2)), cast(-8.00 as decimal(18,2)), cast(-0.25 as decimal(18,2))
+          union all
+          select cast('park_b|9|0' as varchar), cast('park_b' as varchar), cast(9 as integer), cast(0 as integer), cast(2001 as integer), cast('2001-03-01' as date), cast(2.50 as decimal(18,2)), cast(4.00 as decimal(18,2)), cast(3.00 as decimal(18,2)), cast(2.00 as decimal(18,2)), cast(1.00 as decimal(18,2)), cast(-1.00 as decimal(18,2)), cast(-2.00 as decimal(18,2)), cast(-1.00 as decimal(18,2)), cast(-1.50 as decimal(18,2)), cast(-1.25 as decimal(18,2)), cast(-0.75 as decimal(18,2)), cast(-2.00 as decimal(18,2)), cast(-0.10 as decimal(18,2))
+          union all
+          select cast('park_c|9|3' as varchar), cast('park_c' as varchar), cast(9 as integer), cast(3 as integer), cast(2002 as integer), cast('2002-06-01' as date), cast(201.00 as decimal(18,2)), cast(130.00 as decimal(18,2)), cast(25.00 as decimal(18,2)), cast(35.00 as decimal(18,2)), cast(55.00 as decimal(18,2)), cast(-11.00 as decimal(18,2)), cast(-21.00 as decimal(18,2)), cast(-3.50 as decimal(18,2)), cast(-2.50 as decimal(18,2)), cast(-4.50 as decimal(18,2)), cast(-1.50 as decimal(18,2)), cast(-9.00 as decimal(18,2)), cast(-0.75 as decimal(18,2))
+          union all
+          select cast('park_d|9|4' as varchar), cast('park_d' as varchar), cast(9 as integer), cast(4 as integer), cast(2003 as integer), cast('2003-07-01' as date), cast(272.00 as decimal(18,2)), cast(170.00 as decimal(18,2)), cast(40.00 as decimal(18,2)), cast(45.00 as decimal(18,2)), cast(65.00 as decimal(18,2)), cast(-12.00 as decimal(18,2)), cast(-22.00 as decimal(18,2)), cast(-4.00 as decimal(18,2)), cast(-3.00 as decimal(18,2)), cast(-5.00 as decimal(18,2)), cast(-2.00 as decimal(18,2)), cast(-10.00 as decimal(18,2)), cast(-1.00 as decimal(18,2))
+          union all
+          select cast('park_e|9|5' as varchar), cast('park_e' as varchar), cast(9 as integer), cast(5 as integer), cast(2004 as integer), cast('2004-08-01' as date), cast(10.00 as decimal(18,2)), cast(4.00 as decimal(18,2)), cast(3.00 as decimal(18,2)), cast(2.00 as decimal(18,2)), cast(1.00 as decimal(18,2)), cast(0.00 as decimal(18,2)), cast(0.00 as decimal(18,2)), cast(0.00 as decimal(18,2)), cast(0.00 as decimal(18,2)), cast(0.00 as decimal(18,2)), cast(0.00 as decimal(18,2)), cast(0.00 as decimal(18,2)), cast(0.00 as decimal(18,2))
+          union all
+          select cast('park_f|9|6' as varchar), cast('park_f' as varchar), cast(9 as integer), cast(6 as integer), cast(2005 as integer), cast('2005-09-01' as date), cast(0.00 as decimal(18,2)), cast(0.00 as decimal(18,2)), cast(0.00 as decimal(18,2)), cast(0.00 as decimal(18,2)), cast(0.00 as decimal(18,2)), cast(0.00 as decimal(18,2)), cast(0.00 as decimal(18,2)), cast(0.00 as decimal(18,2)), cast(0.00 as decimal(18,2)), cast(0.00 as decimal(18,2)), cast(0.00 as decimal(18,2)), cast(0.00 as decimal(18,2)), cast(0.00 as decimal(18,2))
+      - input: ref('fct_park_day')
+        format: sql
+        rows: |
+          select cast('park_a' as varchar) as park_id, cast(9 as integer) as game_year, cast(0 as integer) as game_month, cast('park_a|9|0|1' as varchar) as park_day_key, cast(10 as bigint) as admissions_increase, cast(600 as integer) as park_rating
+          union all
+          select cast('park_a' as varchar), cast(9 as integer), cast(0 as integer), cast('park_a|9|0|2' as varchar), cast(null as bigint), cast(700 as integer)
+          union all
+          select cast('park_a' as varchar), cast(9 as integer), cast(0 as integer), cast('park_a|9|0|3' as varchar), cast(20 as bigint), cast(800 as integer)
+          union all
+          select cast('park_a' as varchar), cast(9 as integer), cast(1 as integer), cast('park_a|9|1|1' as varchar), cast(5 as bigint), cast(800 as integer)
+          union all
+          select cast('park_a' as varchar), cast(9 as integer), cast(1 as integer), cast('park_a|9|1|2' as varchar), cast(15 as bigint), cast(500 as integer)
+          union all
+          select cast('park_a' as varchar), cast(9 as integer), cast(2 as integer), cast('park_a|9|2|1' as varchar), cast(99 as bigint), cast(999 as integer)
+          union all
+          select cast('park_a' as varchar), cast(10 as integer), cast(0 as integer), cast('park_a|10|0|1' as varchar), cast(77 as bigint), cast(777 as integer)
+          union all
+          select cast('park_b' as varchar), cast(9 as integer), cast(1 as integer), cast('park_b|9|1|1' as varchar), cast(88 as bigint), cast(998 as integer)
+          union all
+          select cast('park_c' as varchar), cast(9 as integer), cast(3 as integer), cast('park_c|9|3|1' as varchar), cast(2 as bigint), cast(500 as integer)
+          union all
+          select cast('park_c' as varchar), cast(9 as integer), cast(3 as integer), cast('park_c|9|3|2' as varchar), cast(3 as bigint), cast(500 as integer)
+          union all
+          select cast('park_c' as varchar), cast(9 as integer), cast(3 as integer), cast('park_c|9|3|3' as varchar), cast(4 as bigint), cast(601 as integer)
+          union all
+          select cast('park_d' as varchar), cast(9 as integer), cast(4 as integer), cast('park_d|9|4|1' as varchar), cast(11 as bigint), cast(800 as integer)
+          union all
+          select cast('park_d' as varchar), cast(9 as integer), cast(4 as integer), cast('park_d|9|4|2' as varchar), cast(12 as bigint), cast(800 as integer)
+          union all
+          select cast('park_d' as varchar), cast(9 as integer), cast(4 as integer), cast('park_d|9|4|3' as varchar), cast(13 as bigint), cast(500 as integer)
+          union all
+          select cast('park_e' as varchar), cast(9 as integer), cast(5 as integer), cast('park_e|9|5|1' as varchar), cast(0 as bigint), cast(500 as integer)
+    expect:
+      rows:
+        - {park_month_key: 'park_a|9|0', park_id: park_a, statement_year: 9, statement_month: 0, company_year: 2000, company_date: '2000-03-01', operating_profit: 160.00, operating_revenue: 200.00, ride_revenue: 100.00, food_drink_revenue: 20.00, merchandise_revenue: 30.00, entrance_revenue: 50.00, operating_costs: -40.00, ride_running_costs: -10.00, staff_wages: -20.00, stock_costs: -5.00, marketing_costs: -4.00, research_costs: -1.00, capital_spending: -7.00, interest_costs: -0.50, guest_visits: 30, operating_days: 3, days_with_visits: 2, park_rating_sum: 2100, average_park_rating: 700.00, revenue_per_visit: 6.67, ride_revenue_per_visit: 3.33, food_drink_revenue_per_visit: 0.67, merchandise_revenue_per_visit: 1.00, entrance_revenue_per_visit: 1.67, ride_revenue_share_pct: 50.00, food_drink_revenue_share_pct: 10.00, merchandise_revenue_share_pct: 15.00, entrance_revenue_share_pct: 25.00, revenue_per_operating_day: 66.67}
+        - {park_month_key: 'park_a|9|1', park_id: park_a, statement_year: 9, statement_month: 1, company_year: 2000, company_date: '2000-04-01', operating_profit: 76.00, operating_revenue: 100.00, ride_revenue: 60.00, food_drink_revenue: 12.00, merchandise_revenue: 8.00, entrance_revenue: 20.00, operating_costs: -24.00, ride_running_costs: -6.00, staff_wages: -10.00, stock_costs: -4.00, marketing_costs: -3.00, research_costs: -1.00, capital_spending: -8.00, interest_costs: -0.25, guest_visits: 20, operating_days: 2, days_with_visits: 2, park_rating_sum: 1300, average_park_rating: 650.00, revenue_per_visit: 5.00, ride_revenue_per_visit: 3.00, food_drink_revenue_per_visit: 0.60, merchandise_revenue_per_visit: 0.40, entrance_revenue_per_visit: 1.00, ride_revenue_share_pct: 60.00, food_drink_revenue_share_pct: 12.00, merchandise_revenue_share_pct: 8.00, entrance_revenue_share_pct: 20.00, revenue_per_operating_day: 50.00}
+        - {park_month_key: 'park_b|9|0', park_id: park_b, statement_year: 9, statement_month: 0, company_year: 2001, company_date: '2001-03-01', operating_profit: 2.50, operating_revenue: 10.00, ride_revenue: 4.00, food_drink_revenue: 3.00, merchandise_revenue: 2.00, entrance_revenue: 1.00, operating_costs: -7.50, ride_running_costs: -1.00, staff_wages: -2.00, stock_costs: -2.50, marketing_costs: -1.25, research_costs: -0.75, capital_spending: -2.00, interest_costs: -0.10, guest_visits: null, operating_days: 0, days_with_visits: 0, park_rating_sum: null, average_park_rating: null, revenue_per_visit: null, ride_revenue_per_visit: null, food_drink_revenue_per_visit: null, merchandise_revenue_per_visit: null, entrance_revenue_per_visit: null, ride_revenue_share_pct: 40.00, food_drink_revenue_share_pct: 30.00, merchandise_revenue_share_pct: 20.00, entrance_revenue_share_pct: 10.00, revenue_per_operating_day: null}
+        - {park_month_key: 'park_c|9|3', park_id: park_c, statement_year: 9, statement_month: 3, company_year: 2002, company_date: '2002-06-01', operating_profit: 201.00, operating_revenue: 245.00, ride_revenue: 130.00, food_drink_revenue: 25.00, merchandise_revenue: 35.00, entrance_revenue: 55.00, operating_costs: -44.00, ride_running_costs: -11.00, staff_wages: -21.00, stock_costs: -6.00, marketing_costs: -4.50, research_costs: -1.50, capital_spending: -9.00, interest_costs: -0.75, guest_visits: 9, operating_days: 3, days_with_visits: 3, park_rating_sum: 1601, average_park_rating: 533.67, revenue_per_visit: 27.22, ride_revenue_per_visit: 14.44, food_drink_revenue_per_visit: 2.78, merchandise_revenue_per_visit: 3.89, entrance_revenue_per_visit: 6.11, ride_revenue_share_pct: 53.06, food_drink_revenue_share_pct: 10.20, merchandise_revenue_share_pct: 14.29, entrance_revenue_share_pct: 22.45, revenue_per_operating_day: 81.67}
+        - {park_month_key: 'park_d|9|4', park_id: park_d, statement_year: 9, statement_month: 4, company_year: 2003, company_date: '2003-07-01', operating_profit: 272.00, operating_revenue: 320.00, ride_revenue: 170.00, food_drink_revenue: 40.00, merchandise_revenue: 45.00, entrance_revenue: 65.00, operating_costs: -48.00, ride_running_costs: -12.00, staff_wages: -22.00, stock_costs: -7.00, marketing_costs: -5.00, research_costs: -2.00, capital_spending: -10.00, interest_costs: -1.00, guest_visits: 36, operating_days: 3, days_with_visits: 3, park_rating_sum: 2100, average_park_rating: 700.00, revenue_per_visit: 8.89, ride_revenue_per_visit: 4.72, food_drink_revenue_per_visit: 1.11, merchandise_revenue_per_visit: 1.25, entrance_revenue_per_visit: 1.81, ride_revenue_share_pct: 53.13, food_drink_revenue_share_pct: 12.50, merchandise_revenue_share_pct: 14.06, entrance_revenue_share_pct: 20.31, revenue_per_operating_day: 106.67}
+        - {park_month_key: 'park_e|9|5', park_id: park_e, statement_year: 9, statement_month: 5, company_year: 2004, company_date: '2004-08-01', operating_profit: 10.00, operating_revenue: 10.00, ride_revenue: 4.00, food_drink_revenue: 3.00, merchandise_revenue: 2.00, entrance_revenue: 1.00, operating_costs: 0.00, ride_running_costs: 0.00, staff_wages: 0.00, stock_costs: 0.00, marketing_costs: 0.00, research_costs: 0.00, capital_spending: 0.00, interest_costs: 0.00, guest_visits: 0, operating_days: 1, days_with_visits: 1, park_rating_sum: 500, average_park_rating: 500.00, revenue_per_visit: null, ride_revenue_per_visit: null, food_drink_revenue_per_visit: null, merchandise_revenue_per_visit: null, entrance_revenue_per_visit: null, ride_revenue_share_pct: 40.00, food_drink_revenue_share_pct: 30.00, merchandise_revenue_share_pct: 20.00, entrance_revenue_share_pct: 10.00, revenue_per_operating_day: 10.00}
+        - {park_month_key: 'park_f|9|6', park_id: park_f, statement_year: 9, statement_month: 6, company_year: 2005, company_date: '2005-09-01', operating_profit: 0.00, operating_revenue: 0.00, ride_revenue: 0.00, food_drink_revenue: 0.00, merchandise_revenue: 0.00, entrance_revenue: 0.00, operating_costs: 0.00, ride_running_costs: 0.00, staff_wages: 0.00, stock_costs: 0.00, marketing_costs: 0.00, research_costs: 0.00, capital_spending: 0.00, interest_costs: 0.00, guest_visits: null, operating_days: 0, days_with_visits: 0, park_rating_sum: null, average_park_rating: null, revenue_per_visit: null, ride_revenue_per_visit: null, food_drink_revenue_per_visit: null, merchandise_revenue_per_visit: null, entrance_revenue_per_visit: null, ride_revenue_share_pct: null, food_drink_revenue_share_pct: null, merchandise_revenue_share_pct: null, entrance_revenue_share_pct: null, revenue_per_operating_day: null}

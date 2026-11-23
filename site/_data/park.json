@@ -1,0 +1,14 @@
+{
+  "name": "park",
+  "relation": "marts.dim_park",
+  "columns": [
+    "park_id",
+    "park_number"
+  ],
+  "rows": [
+    {
+      "park_id": "k1792587321039-h8a4t4",
+      "park_number": 1
+    }
+  ]
+}

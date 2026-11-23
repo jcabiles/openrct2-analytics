@@ -1,0 +1,405 @@
+version: 2
+
+models:
+  - name: obt_park_year
+    description: >-
+      Answers how much each park earned, spent and operated in each company year, and whether that year is closed.
+      The figures are not yet reconciled: they are sums of kept monthly statements and are not tied to a ledger or an
+      outside report, and a partial first season can still change. Grain: one row per park per company year with at least
+      one kept statement; key: park_year_key, the park ID and the game year. It sums the month table obt_park_month,
+      counts months with a net cash change from fct_park_month, and carries the close status from the year-close
+      register int_park_years__year_close without deriving it. Every ratio is recomputed from the year's sums, never
+      averaged. Unit: US dollars, guests, days, statements and rating points as stated per column; clock: company date
+      (year). Empty on the zero-row build because there are no kept statements.
+    config:
+      contract:
+        enforced: true
+    meta:
+      expected_min_rows: 1
+    data_tests:
+      - rows_on_sample:
+          arguments:
+            expected: 1
+    columns:
+      - name: park_year_key
+        data_type: varchar
+        description: "Park ID, a vertical bar and the game year, so a registry correction does not change it; unit: text; clock: game calendar (year)."
+        data_tests:
+          - unique
+          - not_null
+      - name: park_id
+        data_type: varchar
+        description: "Stable park identifier; unit: text; clock: company date (year)."
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_park')
+                field: park_id
+      - name: company_year
+        data_type: integer
+        description: "Company year of the row; unit: year; clock: company date (year)."
+        data_tests:
+          - not_null
+      - name: game_year
+        data_type: integer
+        description: "In-game year of the park's statements in this company year; unit: year; clock: game calendar (year)."
+        data_tests:
+          - not_null
+      - name: first_statement_company_date
+        data_type: date
+        description: "First day of the company month of the year's earliest kept statement; unit: date; clock: company date (month)."
+        data_tests:
+          - not_null
+      - name: last_statement_company_date
+        data_type: date
+        description: "First day of the company month of the year's latest kept statement; unit: date; clock: company date (month)."
+        data_tests:
+          - not_null
+      - name: statements_kept
+        data_type: integer
+        description: "Distinct game months with a kept statement this company year, carried from the year-close register; unit: statements; clock: company date (year)."
+        data_tests:
+          - not_null
+      - name: statements_expected
+        data_type: integer
+        description: "Statements the park owes this company year (8, fewer in a partial first season), carried from the year-close register; unit: statements; clock: company date (year)."
+        data_tests:
+          - not_null
+      - name: close_status
+        data_type: varchar
+        description: "Year-close status from the register: partial_first_season, complete, incomplete or open; unit: text; clock: company date (year)."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [complete, incomplete, open, partial_first_season]
+      - name: is_partial_first_season
+        data_type: boolean
+        description: "True when this is the park's partial first season, carried from the register; unit: true or false; clock: company date (year)."
+        data_tests:
+          - not_null
+      - name: is_company_year_closed
+        data_type: boolean
+        description: "True when the register marks the whole company year closed; unit: true or false; clock: company date (year)."
+        data_tests:
+          - not_null
+      - name: months_checked
+        data_type: integer
+        description: "Kept statement months of the year that have a net cash change (every kept statement except the park's first); unit: months; clock: company date (year)."
+        data_tests:
+          - not_null
+      - name: operating_profit
+        data_type: decimal(18,2)
+        description: "Operating profit summed over the park's kept statement months of the year; not yet reconciled; unit: US dollars; clock: company date (year)."
+      - name: operating_revenue
+        data_type: decimal(18,2)
+        description: "Ride, food and drink, merchandise, and entrance revenue summed over the year's kept statement months; not yet reconciled; unit: US dollars; clock: company date (year)."
+      - name: ride_revenue
+        data_type: decimal(18,2)
+        description: "Revenue from ride tickets summed over the year's kept statement months; not yet reconciled; unit: US dollars; clock: company date (year)."
+      - name: food_drink_revenue
+        data_type: decimal(18,2)
+        description: "Revenue from food and drink sales summed over the year's kept statement months; not yet reconciled; unit: US dollars; clock: company date (year)."
+      - name: merchandise_revenue
+        data_type: decimal(18,2)
+        description: "Revenue from shop sales summed over the year's kept statement months; not yet reconciled; unit: US dollars; clock: company date (year)."
+      - name: entrance_revenue
+        data_type: decimal(18,2)
+        description: "Revenue from park entrance tickets summed over the year's kept statement months; not yet reconciled; unit: US dollars; clock: company date (year)."
+      - name: operating_costs
+        data_type: decimal(18,2)
+        description: "Ride running costs, wages, stock, marketing and research costs summed over the year's kept statement months; costs are negative; not yet reconciled; unit: US dollars; clock: company date (year)."
+      - name: ride_running_costs
+        data_type: decimal(18,2)
+        description: "Costs to run rides summed over the year's kept statement months; costs are negative; not yet reconciled; unit: US dollars; clock: company date (year)."
+      - name: staff_wages
+        data_type: decimal(18,2)
+        description: "Staff wages summed over the year's kept statement months; costs are negative; not yet reconciled; unit: US dollars; clock: company date (year)."
+      - name: stock_costs
+        data_type: decimal(18,2)
+        description: "Shop and food and drink stock costs summed over the year's kept statement months; costs are negative; not yet reconciled; unit: US dollars; clock: company date (year)."
+      - name: marketing_costs
+        data_type: decimal(18,2)
+        description: "Marketing costs summed over the year's kept statement months; costs are negative; not yet reconciled; unit: US dollars; clock: company date (year)."
+      - name: research_costs
+        data_type: decimal(18,2)
+        description: "Research costs summed over the year's kept statement months; costs are negative; not yet reconciled; unit: US dollars; clock: company date (year)."
+      - name: capital_spending
+        data_type: decimal(18,2)
+        description: "Capital spending summed over the year's kept statement months; not yet reconciled; unit: US dollars; clock: company date (year)."
+      - name: interest_costs
+        data_type: decimal(18,2)
+        description: "Interest costs summed over the year's kept statement months; costs are negative; not yet reconciled; unit: US dollars; clock: company date (year)."
+      - name: guest_visits
+        data_type: bigint
+        description: "Admissions increase summed over the year's kept park-days; null if there are none; each session's last kept day has no admissions figure, so it misses that day's visits; unit: guests; clock: company date (year)."
+      - name: operating_days
+        data_type: integer
+        description: "Count of kept park-days in the company year; unit: days; clock: company date (year)."
+        data_tests:
+          - not_null
+      - name: days_with_visits
+        data_type: integer
+        description: "Kept park-days of the year with an admissions figure; can be below operating_days; unit: days; clock: company date (year)."
+        data_tests:
+          - not_null
+      - name: park_rating_sum
+        data_type: bigint
+        description: "Sum of park ratings at the start of the year's kept park-days; null if there are none; unit: rating points; clock: company date (year)."
+      - name: average_park_rating
+        data_type: decimal(18,2)
+        description: "park_rating_sum divided by operating_days for the year, never an average of monthly averages; null when there are no operating days; unit: rating points; clock: company date (year)."
+      - name: revenue_per_visit
+        data_type: decimal(18,2)
+        description: "operating_revenue divided by guest_visits, both summed over the year's kept statement months, never an average of monthly ratios; null when guest_visits is zero or null; statement revenue covers whole game months while visits and days count only captured park-days; not yet reconciled; unit: US dollars per guest; clock: company date (year)."
+      - name: ride_revenue_per_visit
+        data_type: decimal(18,2)
+        description: "ride_revenue divided by guest_visits, both summed over the year's kept statement months, never an average of monthly ratios; null when guest_visits is zero or null; statement revenue covers whole game months while visits and days count only captured park-days; not yet reconciled; unit: US dollars per guest; clock: company date (year)."
+      - name: food_drink_revenue_per_visit
+        data_type: decimal(18,2)
+        description: "food_drink_revenue divided by guest_visits, both summed over the year's kept statement months, never an average of monthly ratios; null when guest_visits is zero or null; statement revenue covers whole game months while visits and days count only captured park-days; not yet reconciled; unit: US dollars per guest; clock: company date (year)."
+      - name: merchandise_revenue_per_visit
+        data_type: decimal(18,2)
+        description: "merchandise_revenue divided by guest_visits, both summed over the year's kept statement months, never an average of monthly ratios; null when guest_visits is zero or null; statement revenue covers whole game months while visits and days count only captured park-days; not yet reconciled; unit: US dollars per guest; clock: company date (year)."
+      - name: revenue_per_operating_day
+        data_type: decimal(18,2)
+        description: "operating_revenue divided by operating_days, both summed over the year's kept statement months, never an average of monthly ratios; null when operating_days is zero or null; statement revenue covers whole game months while visits and days count only captured park-days; not yet reconciled; unit: US dollars per operating day; clock: company date (year)."
+
+unit_tests:
+  - name: obt_park_year_sums_months_per_park_and_recomputes_ratios
+    description: >-
+      Parks with different game-year origins share company year 2000 and park_a also has company year 2001, each
+      with different operating days. It proves that sums are per park, average_park_rating is the summed rating over the summed
+      operating days and not the mean of monthly averages (park_a 5100 over 8 days is 637.50; the mean of 700 and
+      600 would be 650), months_checked counts months with a net cash change, the
+      status columns are carried from the register, game_year is the park's own, and a company year with no visits gives
+      null ratios (park_e), the register joins on park and company year (park_a has two rows), a park-year with no
+      register row keeps its sums with null status columns (park_d), and a register row with no kept month (park_c)
+      gives no row.
+    model: obt_park_year
+    given:
+      - input: ref('obt_park_month')
+        format: sql
+        rows: |
+          select cast('park_a|9|0' as varchar) as park_month_key, cast('park_a' as varchar) as park_id, cast(9 as integer) as statement_year, cast(2000 as integer) as company_year, cast('2000-03-01' as date) as company_date, cast(100.25 as decimal(18, 2)) as operating_profit, cast(103.50 as decimal(18, 2)) as operating_revenue, cast(106.75 as decimal(18, 2)) as ride_revenue, cast(110.00 as decimal(18, 2)) as food_drink_revenue, cast(113.25 as decimal(18, 2)) as merchandise_revenue, cast(116.50 as decimal(18, 2)) as entrance_revenue, cast(119.75 as decimal(18, 2)) as operating_costs, cast(123.00 as decimal(18, 2)) as ride_running_costs, cast(126.25 as decimal(18, 2)) as staff_wages, cast(129.50 as decimal(18, 2)) as stock_costs, cast(132.75 as decimal(18, 2)) as marketing_costs, cast(136.00 as decimal(18, 2)) as research_costs, cast(139.25 as decimal(18, 2)) as capital_spending, cast(142.50 as decimal(18, 2)) as interest_costs, cast(10 as bigint) as guest_visits, cast(3 as integer) as operating_days, cast(2 as integer) as days_with_visits, cast(2100 as bigint) as park_rating_sum
+          union all
+          select cast('park_a|9|1' as varchar), cast('park_a' as varchar), cast(9 as integer), cast(2000 as integer), cast('2000-04-01' as date), cast(200.25 as decimal(18, 2)), cast(203.50 as decimal(18, 2)), cast(206.75 as decimal(18, 2)), cast(210.00 as decimal(18, 2)), cast(213.25 as decimal(18, 2)), cast(216.50 as decimal(18, 2)), cast(219.75 as decimal(18, 2)), cast(223.00 as decimal(18, 2)), cast(226.25 as decimal(18, 2)), cast(229.50 as decimal(18, 2)), cast(232.75 as decimal(18, 2)), cast(236.00 as decimal(18, 2)), cast(239.25 as decimal(18, 2)), cast(242.50 as decimal(18, 2)), cast(25 as bigint), cast(5 as integer), cast(4 as integer), cast(3000 as bigint)
+          union all
+          select cast('park_b|12|0' as varchar), cast('park_b' as varchar), cast(12 as integer), cast(2000 as integer), cast('2000-03-01' as date), cast(300.25 as decimal(18, 2)), cast(303.50 as decimal(18, 2)), cast(306.75 as decimal(18, 2)), cast(310.00 as decimal(18, 2)), cast(313.25 as decimal(18, 2)), cast(316.50 as decimal(18, 2)), cast(319.75 as decimal(18, 2)), cast(323.00 as decimal(18, 2)), cast(326.25 as decimal(18, 2)), cast(329.50 as decimal(18, 2)), cast(332.75 as decimal(18, 2)), cast(336.00 as decimal(18, 2)), cast(339.25 as decimal(18, 2)), cast(342.50 as decimal(18, 2)), cast(40 as bigint), cast(7 as integer), cast(1 as integer), cast(4200 as bigint)
+          union all
+          select cast('park_b|12|1' as varchar), cast('park_b' as varchar), cast(12 as integer), cast(2000 as integer), cast('2000-04-01' as date), cast(400.25 as decimal(18, 2)), cast(403.50 as decimal(18, 2)), cast(406.75 as decimal(18, 2)), cast(410.00 as decimal(18, 2)), cast(413.25 as decimal(18, 2)), cast(416.50 as decimal(18, 2)), cast(419.75 as decimal(18, 2)), cast(423.00 as decimal(18, 2)), cast(426.25 as decimal(18, 2)), cast(429.50 as decimal(18, 2)), cast(432.75 as decimal(18, 2)), cast(436.00 as decimal(18, 2)), cast(439.25 as decimal(18, 2)), cast(442.50 as decimal(18, 2)), cast(null as bigint), cast(2 as integer), cast(0 as integer), cast(1400 as bigint)
+          union all
+          select cast('park_a|10|0' as varchar), cast('park_a' as varchar), cast(10 as integer), cast(2001 as integer), cast('2001-03-01' as date), cast(500.25 as decimal(18, 2)), cast(503.50 as decimal(18, 2)), cast(506.75 as decimal(18, 2)), cast(510.00 as decimal(18, 2)), cast(513.25 as decimal(18, 2)), cast(516.50 as decimal(18, 2)), cast(519.75 as decimal(18, 2)), cast(523.00 as decimal(18, 2)), cast(526.25 as decimal(18, 2)), cast(529.50 as decimal(18, 2)), cast(532.75 as decimal(18, 2)), cast(536.00 as decimal(18, 2)), cast(539.25 as decimal(18, 2)), cast(542.50 as decimal(18, 2)), cast(40 as bigint), cast(6 as integer), cast(5 as integer), cast(3600 as bigint)
+          union all
+          select cast('park_d|13|0' as varchar), cast('park_d' as varchar), cast(13 as integer), cast(2000 as integer), cast('2000-03-01' as date), cast(600.25 as decimal(18, 2)), cast(603.50 as decimal(18, 2)), cast(606.75 as decimal(18, 2)), cast(610.00 as decimal(18, 2)), cast(613.25 as decimal(18, 2)), cast(616.50 as decimal(18, 2)), cast(619.75 as decimal(18, 2)), cast(623.00 as decimal(18, 2)), cast(626.25 as decimal(18, 2)), cast(629.50 as decimal(18, 2)), cast(632.75 as decimal(18, 2)), cast(636.00 as decimal(18, 2)), cast(639.25 as decimal(18, 2)), cast(642.50 as decimal(18, 2)), cast(45 as bigint), cast(9 as integer), cast(8 as integer), cast(6300 as bigint)
+          union all
+          select cast('park_e|11|0' as varchar), cast('park_e' as varchar), cast(11 as integer), cast(2000 as integer), cast('2000-03-01' as date), cast(700.25 as decimal(18, 2)), cast(703.50 as decimal(18, 2)), cast(706.75 as decimal(18, 2)), cast(710.00 as decimal(18, 2)), cast(713.25 as decimal(18, 2)), cast(716.50 as decimal(18, 2)), cast(719.75 as decimal(18, 2)), cast(723.00 as decimal(18, 2)), cast(726.25 as decimal(18, 2)), cast(729.50 as decimal(18, 2)), cast(732.75 as decimal(18, 2)), cast(736.00 as decimal(18, 2)), cast(739.25 as decimal(18, 2)), cast(742.50 as decimal(18, 2)), cast(null as bigint), cast(0 as integer), cast(0 as integer), cast(0 as bigint)
+      - input: ref('fct_park_month')
+        format: sql
+        rows: |
+          select cast('park_a|9|0' as varchar) as park_month_key, cast(null as decimal(18, 2)) as net_cash_change_usd
+          union all
+          select cast('park_a|9|1' as varchar), cast(500.25 as decimal(18, 2))
+          union all
+          select cast('park_b|12|0' as varchar), cast(123.45 as decimal(18, 2))
+          union all
+          select cast('park_b|12|1' as varchar), cast(-6.50 as decimal(18, 2))
+          union all
+          select cast('park_a|10|0' as varchar), cast(800.50 as decimal(18, 2))
+          union all
+          select cast('park_d|13|0' as varchar), cast(700.75 as decimal(18, 2))
+      - input: ref('int_park_years__year_close')
+        format: sql
+        rows: |
+          select cast('park_a' as varchar) as park_id, cast(2000 as integer) as company_year, cast(8 as integer) as statements_expected, cast(2 as integer) as statements_kept, cast('open' as varchar) as close_status, cast(false as boolean) as is_partial_first_season, cast(true as boolean) as is_company_year_closed
+          union all
+          select cast('park_b' as varchar), cast(2000 as integer), cast(5 as integer), cast(3 as integer), cast('partial_first_season' as varchar), cast(true as boolean), cast(false as boolean)
+          union all
+          select cast('park_c' as varchar), cast(2000 as integer), cast(7 as integer), cast(0 as integer), cast('open' as varchar), cast(false as boolean), cast(false as boolean)
+          union all
+          select cast('park_a' as varchar), cast(2001 as integer), cast(6 as integer), cast(1 as integer), cast('complete' as varchar), cast(true as boolean), cast(false as boolean)
+          union all
+          select cast('park_e' as varchar), cast(2000 as integer), cast(4 as integer), cast(1 as integer), cast('incomplete' as varchar), cast(false as boolean), cast(true as boolean)
+    expect:
+      rows:
+        - park_year_key: 'park_a|9'
+          park_id: 'park_a'
+          company_year: 2000
+          game_year: 9
+          first_statement_company_date: '2000-03-01'
+          last_statement_company_date: '2000-04-01'
+          statements_kept: 2
+          statements_expected: 8
+          close_status: 'open'
+          is_partial_first_season: false
+          is_company_year_closed: true
+          months_checked: 1
+          operating_profit: 300.50
+          operating_revenue: 307.00
+          ride_revenue: 313.50
+          food_drink_revenue: 320.00
+          merchandise_revenue: 326.50
+          entrance_revenue: 333.00
+          operating_costs: 339.50
+          ride_running_costs: 346.00
+          staff_wages: 352.50
+          stock_costs: 359.00
+          marketing_costs: 365.50
+          research_costs: 372.00
+          capital_spending: 378.50
+          interest_costs: 385.00
+          guest_visits: 35
+          operating_days: 8
+          days_with_visits: 6
+          park_rating_sum: 5100
+          average_park_rating: 637.50
+          revenue_per_visit: 8.77
+          ride_revenue_per_visit: 8.96
+          food_drink_revenue_per_visit: 9.14
+          merchandise_revenue_per_visit: 9.33
+          revenue_per_operating_day: 38.38
+        - park_year_key: 'park_b|12'
+          park_id: 'park_b'
+          company_year: 2000
+          game_year: 12
+          first_statement_company_date: '2000-03-01'
+          last_statement_company_date: '2000-04-01'
+          statements_kept: 3
+          statements_expected: 5
+          close_status: 'partial_first_season'
+          is_partial_first_season: true
+          is_company_year_closed: false
+          months_checked: 2
+          operating_profit: 700.50
+          operating_revenue: 707.00
+          ride_revenue: 713.50
+          food_drink_revenue: 720.00
+          merchandise_revenue: 726.50
+          entrance_revenue: 733.00
+          operating_costs: 739.50
+          ride_running_costs: 746.00
+          staff_wages: 752.50
+          stock_costs: 759.00
+          marketing_costs: 765.50
+          research_costs: 772.00
+          capital_spending: 778.50
+          interest_costs: 785.00
+          guest_visits: 40
+          operating_days: 9
+          days_with_visits: 1
+          park_rating_sum: 5600
+          average_park_rating: 622.22
+          revenue_per_visit: 17.68
+          ride_revenue_per_visit: 17.84
+          food_drink_revenue_per_visit: 18.00
+          merchandise_revenue_per_visit: 18.16
+          revenue_per_operating_day: 78.56
+        - park_year_key: 'park_a|10'
+          park_id: 'park_a'
+          company_year: 2001
+          game_year: 10
+          first_statement_company_date: '2001-03-01'
+          last_statement_company_date: '2001-03-01'
+          statements_kept: 1
+          statements_expected: 6
+          close_status: 'complete'
+          is_partial_first_season: true
+          is_company_year_closed: false
+          months_checked: 1
+          operating_profit: 500.25
+          operating_revenue: 503.50
+          ride_revenue: 506.75
+          food_drink_revenue: 510.00
+          merchandise_revenue: 513.25
+          entrance_revenue: 516.50
+          operating_costs: 519.75
+          ride_running_costs: 523.00
+          staff_wages: 526.25
+          stock_costs: 529.50
+          marketing_costs: 532.75
+          research_costs: 536.00
+          capital_spending: 539.25
+          interest_costs: 542.50
+          guest_visits: 40
+          operating_days: 6
+          days_with_visits: 5
+          park_rating_sum: 3600
+          average_park_rating: 600.00
+          revenue_per_visit: 12.59
+          ride_revenue_per_visit: 12.67
+          food_drink_revenue_per_visit: 12.75
+          merchandise_revenue_per_visit: 12.83
+          revenue_per_operating_day: 83.92
+        - park_year_key: 'park_d|13'
+          park_id: 'park_d'
+          company_year: 2000
+          game_year: 13
+          first_statement_company_date: '2000-03-01'
+          last_statement_company_date: '2000-03-01'
+          statements_kept: null
+          statements_expected: null
+          close_status: null
+          is_partial_first_season: null
+          is_company_year_closed: null
+          months_checked: 1
+          operating_profit: 600.25
+          operating_revenue: 603.50
+          ride_revenue: 606.75
+          food_drink_revenue: 610.00
+          merchandise_revenue: 613.25
+          entrance_revenue: 616.50
+          operating_costs: 619.75
+          ride_running_costs: 623.00
+          staff_wages: 626.25
+          stock_costs: 629.50
+          marketing_costs: 632.75
+          research_costs: 636.00
+          capital_spending: 639.25
+          interest_costs: 642.50
+          guest_visits: 45
+          operating_days: 9
+          days_with_visits: 8
+          park_rating_sum: 6300
+          average_park_rating: 700.00
+          revenue_per_visit: 13.41
+          ride_revenue_per_visit: 13.48
+          food_drink_revenue_per_visit: 13.56
+          merchandise_revenue_per_visit: 13.63
+          revenue_per_operating_day: 67.06
+        - park_year_key: 'park_e|11'
+          park_id: 'park_e'
+          company_year: 2000
+          game_year: 11
+          first_statement_company_date: '2000-03-01'
+          last_statement_company_date: '2000-03-01'
+          statements_kept: 1
+          statements_expected: 4
+          close_status: 'incomplete'
+          is_partial_first_season: false
+          is_company_year_closed: true
+          months_checked: 0
+          operating_profit: 700.25
+          operating_revenue: 703.50
+          ride_revenue: 706.75
+          food_drink_revenue: 710.00
+          merchandise_revenue: 713.25
+          entrance_revenue: 716.50
+          operating_costs: 719.75
+          ride_running_costs: 723.00
+          staff_wages: 726.25
+          stock_costs: 729.50
+          marketing_costs: 732.75
+          research_costs: 736.00
+          capital_spending: 739.25
+          interest_costs: 742.50
+          guest_visits: null
+          operating_days: 0
+          days_with_visits: 0
+          park_rating_sum: 0
+          average_park_rating: null
+          revenue_per_visit: null
+          ride_revenue_per_visit: null
+          food_drink_revenue_per_visit: null
+          merchandise_revenue_per_visit: null
+          revenue_per_operating_day: null

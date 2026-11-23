@@ -1,0 +1,41 @@
+{%- from "figure.njk" import figure as region -%}
+{%- set F = "the-analytics-strategy.md" -%}
+{%- set stageFig = "story-stage-first" | figure(exports) -%}
+<section class="sec col" id="story" aria-labelledby="story-h" data-spy>
+  <div class="sec-head">
+    <p class="no">No. 05</p>
+    <h2 id="story-h" tabindex="-1">{% passage F, "story-title", "inline" %}</h2>
+    <p class="lead">{% passage F, "story-lead", "inline" %}</p>
+    <p class="fine measure">{% passage F, "story-rules", "inline" %}</p>
+  </div>
+  <div class="story">
+    <div class="steps" id="steps">
+      {%- for n in [1, 2, 3, 4, 5] %}
+      <div class="step" data-i="{{ loop.index0 }}">
+        <div class="step-card">
+          <p class="sn">Step {{ n }} of 5</p>
+          <h3>{% passage F, "step-" + n + "-title", "inline" %}</h3>
+          {%- if n == 4 %}
+          <p>{% passage F, "step-4-guide", "inline" %}</p>
+          {%- endif %}
+          {%- if n == 5 %}
+          <p>{% passage F, "step-5-body", "inline" %}</p>
+          {%- else %}
+          {{ region(("story-step-" + n) | figure(exports), "div", "p") }}
+          {%- endif %}
+          <p class="fine">{% passage F, "step-" + n + "-note", "inline" %}</p>
+        </div>
+      </div>
+      {%- endfor %}
+    </div>
+    <div class="stage">
+      <div class="panel" data-stage="first">
+        {{ region(stageFig, "div", "p", "", "stage-chart") }}
+      </div>
+      <div class="panel" data-stage="later">
+        {{ region("story-stage-later" | figure(exports), "div", "p") }}
+      </div>
+      <div class="dots" id="stage-dots" aria-hidden="true">{% for n in [1, 2, 3, 4, 5] %}<span></span>{% endfor %}</div>
+    </div>
+  </div>
+</section>

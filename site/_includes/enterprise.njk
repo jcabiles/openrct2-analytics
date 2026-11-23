@@ -1,0 +1,50 @@
+{%- from "figure.njk" import figure as region -%}
+{%- set parksFig = "park-openings" | figure(exports) -%}
+{%- set ruleIds = ["rule-1", "rule-2", "rule-3", "rule-4"] -%}
+{%- set months = [["Jan", ""], ["Feb", ""], ["Mar", "1"], ["Apr", "2"], ["May", "3"], ["Jun", "4"], ["Jul", "5"], ["Aug", "6"], ["Sep", "7"], ["Oct", "8"], ["Nov", ""], ["Dec", ""]] -%}
+<section class="sec col" id="enterprise" aria-labelledby="enterprise-h" data-spy>
+  <div class="sec-head">
+    <p class="no">No. 01</p>
+    <h2 id="enterprise-h" tabindex="-1">{% passage "the-company-timeline.md", "ent-h", "inline" %}</h2>
+    <p class="lead">{% passage "the-company-timeline.md", "ent-lead", "inline" %}</p>
+  </div>
+  <div class="ticket cond">
+    <div class="cond-stub"><p class="stub-h">Conditions of admission</p><h3>Four business rules</h3><p>{% passage "the-company-timeline.md", "ent-cond-note", "inline" %}</p></div>
+    <ol aria-label="{% passage "the-company-timeline.md", "ent-rules-label", "text" %}">
+      {%- for id in ruleIds %}
+      <li><div><h4>{% passage "the-company-timeline.md", id + "-h", "inline" %}</h4><p>{% passage "the-company-timeline.md", id, "inline" %}</p><p class="eff">{% passage "the-company-timeline.md", id + "-eff", "inline" %}</p></div></li>
+      {%- endfor %}
+    </ol>
+    <span class="notch n1" aria-hidden="true"></span><span class="notch n2" aria-hidden="true"></span>
+  </div>
+  <div class="ent-row">
+    <div>
+      <h3>{% passage "the-company-timeline.md", "year-h", "inline" %}</h3>
+      <p class="measure" style="margin-top:var(--s3)">{% passage "the-company-timeline.md", "year-body", "inline" %}</p>
+      <div class="months" role="img" aria-label="{% passage "the-company-timeline.md", "months-label", "text" %}">
+        {%- for name, ordinal in months %}
+        <div class="mo{% if not ordinal %} off{% endif %}"><b>{{ name }}</b><span>{{ ordinal or "none" }}</span></div>
+        {%- endfor %}
+      </div>
+      <p class="fine" style="margin-top:var(--s2)">{% passage "the-company-timeline.md", "months-note", "inline" %}</p>
+      <dl class="clocks">
+        <div><dt>Game day</dt><dd>{% passage "the-company-timeline.md", "clock-day", "inline" %}</dd></div>
+        <div><dt>Company date</dt><dd>{% passage "the-company-timeline.md", "clock-date", "inline" %}</dd></div>
+        <div><dt>Company year</dt><dd>{% passage "the-company-timeline.md", "clock-year", "inline" %}</dd></div>
+        <div><dt>Real time</dt><dd>{% passage "the-company-timeline.md", "clock-real", "inline" %}</dd></div>
+      </dl>
+      <p class="wry" style="margin-top:var(--s5)">{% passage "the-company-timeline.md", "clock-wry", "inline" %}</p>
+    </div>
+    <div>
+      {% call region(parksFig, "div", "ol", "parks") -%}
+      {%- for row in parksFig.rows %}
+      <li><span class="sw {{ parksFig.swatch(loop.index0) }}" aria-hidden="true"></span><div><b>{{ parksFig.line(parksFig.rows, loop.index0) }}</b></div></li>
+      {%- endfor %}
+      {%- endcall %}
+      <ol class="parks">
+        <li class="next"><span class="sw none" aria-hidden="true"></span><div><b>{% passage "the-company-timeline.md", "park-next-h", "inline" %}</b><p>{% passage "the-company-timeline.md", "park-next-rule", "inline" %}</p></div></li>
+      </ol>
+      <div class="footage" role="img" aria-label="{% passage "the-company-timeline.md", "footage-label", "text" %}"><p>{% passage "the-company-timeline.md", "footage", "inline" %}</p></div>
+    </div>
+  </div>
+</section>

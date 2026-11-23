@@ -1,0 +1,28 @@
+{
+  "name": "park_year",
+  "relation": "marts.obt_park_year",
+  "columns": [
+    "park_year_key",
+    "park_id",
+    "company_year",
+    "statements_kept",
+    "statements_expected",
+    "close_status",
+    "is_partial_first_season",
+    "months_checked",
+    "operating_profit"
+  ],
+  "rows": [
+    {
+      "park_year_key": "k1792587321039-h8a4t4|9",
+      "park_id": "k1792587321039-h8a4t4",
+      "company_year": 2000,
+      "statements_kept": 3,
+      "statements_expected": 8,
+      "close_status": "open",
+      "is_partial_first_season": false,
+      "months_checked": 2,
+      "operating_profit": 14117.20
+    }
+  ]
+}

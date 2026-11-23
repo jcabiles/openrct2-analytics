@@ -1,0 +1,136 @@
+version: 2
+
+models:
+  - name: int_park_days__kept
+    description: >-
+      Answers how admissions and park conditions changed on each kept game day,
+      so abandoned save history does not count. Grain: one row per park snapshot
+      on the kept timeline; key park_day_key, park_id joined with game_year,
+      game_month and game_day. Admissions increase belongs to the earlier kept
+      reading in its session; the last kept reading in each session has null.
+      Unit: none for the model as a whole; clock: company date (day) for readings
+      and company date for company_date.
+      On the zero-row build the model is empty because there are no snapshots.
+    meta:
+      expected_min_rows: 1
+    data_tests:
+      - unique:
+          column_name: park_day_key
+      - rows_on_sample:
+          arguments:
+            expected: 105
+    columns:
+      - name: park_day_key
+        description: "Park identifier and game date joined by pipes; text; no unit; clock: game day."
+        data_tests: [not_null]
+      - name: park_id
+        description: "Stable identifier for the park save; text, no unit; no clock."
+        data_tests: [not_null]
+      - name: session_id
+        description: "Plugin start identifier, new on every start; text, no unit; clock: session."
+        data_tests: [not_null]
+      - name: seq
+        description: "Order within the session across event types; unit: count; clock: session order."
+        data_tests: [not_null]
+      - name: event_id
+        description: "Unique identifier for the source park snapshot; text, no unit; clock: event."
+        data_tests:
+          - not_null
+          - unique
+      - name: game_year
+        description: "In-game year; unit: year; clock: game calendar."
+        data_tests: [not_null]
+      - name: game_month
+        description: "In-game month numbered 0 to 7; unit: month; clock: game calendar."
+        data_tests: [not_null]
+      - name: game_day
+        description: "In-game day of the month; unit: day; clock: game calendar."
+        data_tests: [not_null]
+      - name: game_ticks_elapsed
+        description: "Game ticks elapsed since the park began; unit: game tick; clock: game."
+        data_tests: [not_null]
+      - name: company_year
+        description: "Mapped company year for this park-day; unit: year; clock: company date."
+        data_tests: [not_null]
+      - name: company_date
+        description: "Company calendar date for the game day; unit: date; clock: company date."
+        data_tests: [not_null]
+      - name: cash_usd
+        description: "Park cash in US dollars; unit: US dollar; clock: company date (day), at the start of the game day."
+        data_tests: [not_null]
+      - name: guests_in_park
+        description: "Guests inside the park; unit: count of guests; clock: company date (day), at the start of the game day."
+        data_tests: [not_null]
+      - name: park_rating
+        description: "Park rating; unit: rating points; clock: company date (day), at the start of the game day."
+        data_tests: [not_null]
+      - name: total_admissions
+        description: "Cumulative guest admissions, which a reload can rewind; unit: count of guests; clock: company date (day), at the start of the game day."
+        data_tests: [not_null]
+      - name: admissions_increase
+        description: "Rise in cumulative admissions through the next kept reading in this session; unit: count of guests; clock: company date (day), assigned to the earlier game day. Null on a session's last kept reading."
+      - name: weather
+        description: "Weather named by the game; text, no unit; clock: company date (day), at the start of the game day."
+      - name: temperature_c
+        description: "Park temperature; unit: degrees Celsius; clock: company date (day), at the start of the game day."
+
+unit_tests:
+  - name: int_park_days__kept_u3_admissions_follow_kept_sessions
+    description: >-
+      It proves that admissions increases stay with the earlier reading across
+      a month end, the last kept reading in each session is null even where a
+      later session continues the park, an abandoned row is absent, and two
+      parks receive their own company dates.
+    model: int_park_days__kept
+    given:
+      - input: ref('stg_park_snapshot')
+        format: sql
+        rows: |
+          select cast('park1' as varchar) as park_id, cast('sA' as varchar) as session_id, cast(1 as bigint) as seq, cast('sA-1' as varchar) as event_id, cast(9 as integer) as game_year, cast(2 as integer) as game_month, cast(30 as integer) as game_day, cast(1001 as bigint) as game_ticks_elapsed, cast(1.01 as decimal(18,2)) as cash_usd, cast(11 as integer) as guests_in_park, cast(601 as integer) as park_rating, cast(100 as bigint) as total_admissions, cast('sunny' as varchar) as weather, cast(21 as integer) as temperature_c
+          union all
+          select cast('park1' as varchar), cast('sA' as varchar), cast(2 as bigint), cast('sA-2' as varchar), cast(9 as integer), cast(2 as integer), cast(31 as integer), cast(1002 as bigint), cast(1.02 as decimal(18,2)), cast(12 as integer), cast(602 as integer), cast(110 as bigint), cast('cloudy' as varchar), cast(22 as integer)
+          union all
+          select cast('park1' as varchar), cast('sA' as varchar), cast(3 as bigint), cast('sA-3' as varchar), cast(9 as integer), cast(3 as integer), cast(1 as integer), cast(1003 as bigint), cast(1.03 as decimal(18,2)), cast(13 as integer), cast(603 as integer), cast(125 as bigint), cast('rain' as varchar), cast(23 as integer)
+          union all
+          select cast('park1' as varchar), cast('sA' as varchar), cast(4 as bigint), cast('sA-4' as varchar), cast(9 as integer), cast(3 as integer), cast(2 as integer), cast(1004 as bigint), cast(1.04 as decimal(18,2)), cast(14 as integer), cast(604 as integer), cast(140 as bigint), cast('fog' as varchar), cast(24 as integer)
+          union all
+          select cast('park1' as varchar), cast('sB' as varchar), cast(1 as bigint), cast('sB-1' as varchar), cast(9 as integer), cast(3 as integer), cast(2 as integer), cast(1005 as bigint), cast(1.05 as decimal(18,2)), cast(15 as integer), cast(605 as integer), cast(126 as bigint), cast('snow' as varchar), cast(25 as integer)
+          union all
+          select cast('park1' as varchar), cast('sB' as varchar), cast(2 as bigint), cast('sB-2' as varchar), cast(9 as integer), cast(3 as integer), cast(4 as integer), cast(1006 as bigint), cast(1.06 as decimal(18,2)), cast(16 as integer), cast(606 as integer), cast(131 as bigint), cast('storm' as varchar), cast(26 as integer)
+          union all
+          select cast('park2' as varchar), cast('sC' as varchar), cast(1 as bigint), cast('sC-1' as varchar), cast(9 as integer), cast(2 as integer), cast(31 as integer), cast(1007 as bigint), cast(1.07 as decimal(18,2)), cast(17 as integer), cast(607 as integer), cast(50 as bigint), cast('hail' as varchar), cast(27 as integer)
+          union all
+          select cast('park2' as varchar), cast('sC' as varchar), cast(2 as bigint), cast('sC-2' as varchar), cast(9 as integer), cast(3 as integer), cast(1 as integer), cast(1008 as bigint), cast(1.08 as decimal(18,2)), cast(18 as integer), cast(608 as integer), cast(58 as bigint), cast('windy' as varchar), cast(28 as integer)
+      - input: ref('int_sessions__lineage')
+        format: sql
+        rows: |
+          select cast('sA' as varchar) as session_id, cast(true as boolean) as is_on_kept_path, cast(4 as bigint) as cut_seq
+          union all
+          select cast('sB' as varchar), cast(true as boolean), cast(3 as bigint)
+          union all
+          select cast('sC' as varchar), cast(true as boolean), cast(3 as bigint)
+      - input: ref('int_park_days__company_calendar')
+        format: sql
+        rows: |
+          select cast('park1' as varchar) as park_id, cast(9 as integer) as game_year, cast(2 as integer) as game_month, cast(30 as integer) as game_day, cast(2000 as integer) as company_year, cast('2000-03-30' as date) as company_date
+          union all
+          select cast('park1' as varchar), cast(9 as integer), cast(2 as integer), cast(31 as integer), cast(2000 as integer), cast('2000-03-31' as date)
+          union all
+          select cast('park1' as varchar), cast(9 as integer), cast(3 as integer), cast(1 as integer), cast(2000 as integer), cast('2000-04-01' as date)
+          union all
+          select cast('park1' as varchar), cast(9 as integer), cast(3 as integer), cast(2 as integer), cast(2000 as integer), cast('2000-04-02' as date)
+          union all
+          select cast('park1' as varchar), cast(9 as integer), cast(3 as integer), cast(4 as integer), cast(2000 as integer), cast('2000-04-04' as date)
+          union all
+          select cast('park2' as varchar), cast(9 as integer), cast(2 as integer), cast(31 as integer), cast(2003 as integer), cast('2003-03-31' as date)
+          union all
+          select cast('park2' as varchar), cast(9 as integer), cast(3 as integer), cast(1 as integer), cast(2003 as integer), cast('2003-04-01' as date)
+    expect:
+      rows:
+        - {park_day_key: 'park1|9|2|30', park_id: park1, session_id: sA, seq: 1, event_id: sA-1, game_year: 9, game_month: 2, game_day: 30, game_ticks_elapsed: 1001, company_year: 2000, company_date: '2000-03-30', cash_usd: 1.01, guests_in_park: 11, park_rating: 601, total_admissions: 100, admissions_increase: 10, weather: sunny, temperature_c: 21}
+        - {park_day_key: 'park1|9|2|31', park_id: park1, session_id: sA, seq: 2, event_id: sA-2, game_year: 9, game_month: 2, game_day: 31, game_ticks_elapsed: 1002, company_year: 2000, company_date: '2000-03-31', cash_usd: 1.02, guests_in_park: 12, park_rating: 602, total_admissions: 110, admissions_increase: 15, weather: cloudy, temperature_c: 22}
+        - {park_day_key: 'park1|9|3|1', park_id: park1, session_id: sA, seq: 3, event_id: sA-3, game_year: 9, game_month: 3, game_day: 1, game_ticks_elapsed: 1003, company_year: 2000, company_date: '2000-04-01', cash_usd: 1.03, guests_in_park: 13, park_rating: 603, total_admissions: 125, admissions_increase: null, weather: rain, temperature_c: 23}
+        - {park_day_key: 'park1|9|3|2', park_id: park1, session_id: sB, seq: 1, event_id: sB-1, game_year: 9, game_month: 3, game_day: 2, game_ticks_elapsed: 1005, company_year: 2000, company_date: '2000-04-02', cash_usd: 1.05, guests_in_park: 15, park_rating: 605, total_admissions: 126, admissions_increase: 5, weather: snow, temperature_c: 25}
+        - {park_day_key: 'park1|9|3|4', park_id: park1, session_id: sB, seq: 2, event_id: sB-2, game_year: 9, game_month: 3, game_day: 4, game_ticks_elapsed: 1006, company_year: 2000, company_date: '2000-04-04', cash_usd: 1.06, guests_in_park: 16, park_rating: 606, total_admissions: 131, admissions_increase: null, weather: storm, temperature_c: 26}
+        - {park_day_key: 'park2|9|2|31', park_id: park2, session_id: sC, seq: 1, event_id: sC-1, game_year: 9, game_month: 2, game_day: 31, game_ticks_elapsed: 1007, company_year: 2003, company_date: '2003-03-31', cash_usd: 1.07, guests_in_park: 17, park_rating: 607, total_admissions: 50, admissions_increase: 8, weather: hail, temperature_c: 27}
+        - {park_day_key: 'park2|9|3|1', park_id: park2, session_id: sC, seq: 2, event_id: sC-2, game_year: 9, game_month: 3, game_day: 1, game_ticks_elapsed: 1008, company_year: 2003, company_date: '2003-04-01', cash_usd: 1.08, guests_in_park: 18, park_rating: 608, total_admissions: 58, admissions_increase: null, weather: windy, temperature_c: 28}

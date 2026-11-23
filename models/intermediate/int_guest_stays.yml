@@ -1,0 +1,126 @@
+version: 2
+
+models:
+  - name: int_guest_stays
+    description: >-
+      Answers how long a guest stays, in whole game days, from arrival to exit. This model is provisional until
+      save-reload lineage (roadmap item 3b) labels kept and abandoned rows; it reads every session, including events
+      after each session's save. Grain: one row per guest arrival, key session_id with guest_key. An arrival is joined
+      to its exit by session_id and guest_key; an exit with no arrival (a guest seeded at session start) gives no row.
+      A row with no exit is open (is_open true), and its exit columns and stay_game_days are null; an open row has
+      mixed causes: the session ended with the guest still in the park, an exit row was lost because the plugin drops
+      an unfinished daily step, or the guest had not yet entered or gone. A guest across a reload is never joined
+      across sessions: it is at most one open row, the session where it arrived, and its re-seeded later part has no
+      arrival and is left out. An exit_reason of id_reused was recorded at the next guest's arrival step in the same
+      slot, so its date is that arrival's date. stay_game_days starts at the date the plugin's queued arrival step ran, the
+      same as or later than the hook; on the committed sample the delay was at most 8 ticks (about 0.015 of a game day),
+      but the capture sets no limit on it, so on other data a stay can be shorter by more. An exit is noticed late, so a
+      stay can also be longer.
+      unit: game days; clock: game calendar.
+    meta:
+      expected_min_rows: 1
+    data_tests:
+      - unique:
+          column_name: "session_id || '|' || guest_key"
+    columns:
+      - name: park_id
+        description: "The park's identifier, the same text the plugin sends; no unit; no clock."
+      - name: session_id
+        description: "Plugin start identifier; with guest_key it keys the row; text; no unit; no clock."
+        data_tests: [not_null]
+      - name: guest_key
+        description: "Plugin-minted guest number, unique within a session; a whole number; no unit; no clock."
+        data_tests: [not_null]
+      - name: arrival_game_year
+        description: "Game year of the arrival event, from 1; unit: year; clock: game calendar."
+      - name: arrival_game_month
+        description: "Game month of the arrival event, 0 to 7 with March as 0; unit: month; clock: game calendar."
+      - name: arrival_game_day
+        description: "Day of the month of the arrival event, from 1; unit: day; clock: game calendar."
+      - name: arrival_game_ticks
+        description: "Tick the guest-generation hook fired, where the stay starts; unit: game tick; clock: game, ticks since the park began."
+      - name: in_cohort
+        description: "Chosen for the daily guest sample at arrival; true or false; no unit; no clock."
+      - name: exit_game_year
+        description: "Game year of the day the plugin noticed the exit, not the exit moment (noticed late); null while open; for id_reused it is the next guest's arrival date; unit: year; clock: game calendar."
+      - name: exit_game_month
+        description: "Game month of the day the plugin noticed the exit, not the exit moment (noticed late); null while open; for id_reused it is the next guest's arrival date; unit: month; clock: game calendar."
+      - name: exit_game_day
+        description: "Day of the month the plugin noticed the exit, not the exit moment (noticed late); null while open; for id_reused it is the next guest's arrival date; unit: day; clock: game calendar."
+      - name: exit_reason
+        description: "left, or id_reused when the exit was recorded at the next guest's arrival step in the same slot, so its date is that arrival's date; null while open; text; no unit; no clock."
+      - name: entered_park
+        description: "Seen in the park at any check; null while open, so unknown; true or false; no unit; no clock."
+      - name: is_open
+        description: "True when no exit matched; the causes are mixed: the session ended with the guest still in the park, an exit row was lost because the plugin drops an unfinished daily step, or the guest had not yet entered or gone. A guest across a reload is never joined across sessions and is at most this one open row. True or false; no unit; no clock."
+      - name: stay_game_days
+        description: "Whole game days from the arrival's envelope date (the start proxy) to the exit date; the start is the date the plugin's queued arrival step ran (at most 8 ticks after the hook on the committed sample, no limit set by the capture) and the exit is noticed late, so a stay can be shorter or longer than the true stay; null while open; unit: game days; clock: game calendar."
+
+unit_tests:
+  - name: int_guest_stays_pairs_each_arrival_with_its_exit_in_the_same_session
+    description: >-
+      It proves that given ten arrivals, nine closed stays, one open stay and one seeded exit, a closed left stay in one month is
+      7 game days and an id_reused stay keeps
+      its exit reason, a stay whose guest never entered the park keeps entered_park false, an arrival with no exit is
+      open with every exit column and stay_game_days null, an exit with no arrival gives no row, the same guest_key
+      in two sessions pairs only within its own session, and a stay across a month end is 1 game day and across a
+      year end is 2 game days. For every month 0 to 7, at least one closed stay has exactly one endpoint in that
+      month: it arrives in that month and exits in another, or exits in that month after arriving in another.
+    model: int_guest_stays
+    given:
+      - input: ref('stg_guest_arrived')
+        format: sql
+        rows: |
+          select cast('park1' as varchar) as park_id, cast('s1' as varchar) as session_id, cast(1 as integer) as guest_key, cast(1 as integer) as game_year, cast(2 as integer) as game_month, cast(3 as integer) as game_day, cast(100 as bigint) as generated_at_ticks, cast(true as boolean) as in_cohort
+          union all
+          select cast('park1' as varchar), cast('s1' as varchar), cast(2 as integer), cast(1 as integer), cast(3 as integer), cast(5 as integer), cast(200 as bigint), cast(false as boolean)
+          union all
+          select cast('park1' as varchar), cast('s1' as varchar), cast(3 as integer), cast(1 as integer), cast(4 as integer), cast(6 as integer), cast(300 as bigint), cast(true as boolean)
+          union all
+          select cast('park1' as varchar), cast('s1' as varchar), cast(4 as integer), cast(1 as integer), cast(5 as integer), cast(7 as integer), cast(400 as bigint), cast(false as boolean)
+          union all
+          select cast('park2' as varchar), cast('s2' as varchar), cast(1 as integer), cast(1 as integer), cast(2 as integer), cast(4 as integer), cast(500 as bigint), cast(true as boolean)
+          union all
+          select cast('park1' as varchar), cast('s1' as varchar), cast(7 as integer), cast(1 as integer), cast(1 as integer), cast(30 as integer), cast(600 as bigint), cast(false as boolean)
+          union all
+          select cast('park1' as varchar), cast('s1' as varchar), cast(8 as integer), cast(1 as integer), cast(7 as integer), cast(31 as integer), cast(700 as bigint), cast(true as boolean)
+          union all
+          select cast('park1' as varchar), cast('s1' as varchar), cast(9 as integer), cast(1 as integer), cast(0 as integer), cast(11 as integer), cast(800 as bigint), cast(false as boolean)
+          union all
+          select cast('park1' as varchar), cast('s1' as varchar), cast(10 as integer), cast(1 as integer), cast(5 as integer), cast(13 as integer), cast(900 as bigint), cast(true as boolean)
+          union all
+          select cast('park1' as varchar), cast('s1' as varchar), cast(11 as integer), cast(1 as integer), cast(6 as integer), cast(15 as integer), cast(1000 as bigint), cast(false as boolean)
+      - input: ref('stg_guest_left')
+        format: sql
+        rows: |
+          select cast('s1' as varchar) as session_id, cast(1 as integer) as guest_key, cast(1 as integer) as game_year, cast(2 as integer) as game_month, cast(10 as integer) as game_day, cast('left' as varchar) as exit_reason, cast(true as boolean) as entered_park
+          union all
+          select cast('s1' as varchar), cast(2 as integer), cast(1 as integer), cast(4 as integer), cast(9 as integer), cast('id_reused' as varchar), cast(true as boolean)
+          union all
+          select cast('s1' as varchar), cast(3 as integer), cast(1 as integer), cast(5 as integer), cast(12 as integer), cast('left' as varchar), cast(false as boolean)
+          union all
+          select cast('s1' as varchar), cast(6 as integer), cast(1 as integer), cast(6 as integer), cast(8 as integer), cast('left' as varchar), cast(true as boolean)
+          union all
+          select cast('s2' as varchar), cast(1 as integer), cast(1 as integer), cast(2 as integer), cast(20 as integer), cast('left' as varchar), cast(true as boolean)
+          union all
+          select cast('s1' as varchar), cast(7 as integer), cast(1 as integer), cast(2 as integer), cast(1 as integer), cast('left' as varchar), cast(true as boolean)
+          union all
+          select cast('s1' as varchar), cast(8 as integer), cast(2 as integer), cast(0 as integer), cast(2 as integer), cast('left' as varchar), cast(true as boolean)
+          union all
+          select cast('s1' as varchar), cast(9 as integer), cast(1 as integer), cast(5 as integer), cast(17 as integer), cast('left' as varchar), cast(true as boolean)
+          union all
+          select cast('s1' as varchar), cast(10 as integer), cast(1 as integer), cast(7 as integer), cast(19 as integer), cast('left' as varchar), cast(true as boolean)
+          union all
+          select cast('s1' as varchar), cast(11 as integer), cast(2 as integer), cast(5 as integer), cast(21 as integer), cast('left' as varchar), cast(true as boolean)
+    expect:
+      rows:
+        - {park_id: park1, session_id: s1, guest_key: 1, arrival_game_year: 1, arrival_game_month: 2, arrival_game_day: 3, arrival_game_ticks: 100, in_cohort: true, is_open: false, exit_game_year: 1, exit_game_month: 2, exit_game_day: 10, exit_reason: left, entered_park: true, stay_game_days: 7}
+        - {park_id: park1, session_id: s1, guest_key: 2, arrival_game_year: 1, arrival_game_month: 3, arrival_game_day: 5, arrival_game_ticks: 200, in_cohort: false, is_open: false, exit_game_year: 1, exit_game_month: 4, exit_game_day: 9, exit_reason: id_reused, entered_park: true, stay_game_days: 34}
+        - {park_id: park1, session_id: s1, guest_key: 3, arrival_game_year: 1, arrival_game_month: 4, arrival_game_day: 6, arrival_game_ticks: 300, in_cohort: true, is_open: false, exit_game_year: 1, exit_game_month: 5, exit_game_day: 12, exit_reason: left, entered_park: false, stay_game_days: 37}
+        - {park_id: park1, session_id: s1, guest_key: 4, arrival_game_year: 1, arrival_game_month: 5, arrival_game_day: 7, arrival_game_ticks: 400, in_cohort: false, is_open: true, exit_game_year: null, exit_game_month: null, exit_game_day: null, exit_reason: null, entered_park: null, stay_game_days: null}
+        - {park_id: park2, session_id: s2, guest_key: 1, arrival_game_year: 1, arrival_game_month: 2, arrival_game_day: 4, arrival_game_ticks: 500, in_cohort: true, is_open: false, exit_game_year: 1, exit_game_month: 2, exit_game_day: 20, exit_reason: left, entered_park: true, stay_game_days: 16}
+        - {park_id: park1, session_id: s1, guest_key: 7, arrival_game_year: 1, arrival_game_month: 1, arrival_game_day: 30, arrival_game_ticks: 600, in_cohort: false, is_open: false, exit_game_year: 1, exit_game_month: 2, exit_game_day: 1, exit_reason: left, entered_park: true, stay_game_days: 1}
+        - {park_id: park1, session_id: s1, guest_key: 8, arrival_game_year: 1, arrival_game_month: 7, arrival_game_day: 31, arrival_game_ticks: 700, in_cohort: true, is_open: false, exit_game_year: 2, exit_game_month: 0, exit_game_day: 2, exit_reason: left, entered_park: true, stay_game_days: 2}
+        - {park_id: park1, session_id: s1, guest_key: 9, arrival_game_year: 1, arrival_game_month: 0, arrival_game_day: 11, arrival_game_ticks: 800, in_cohort: false, is_open: false, exit_game_year: 1, exit_game_month: 5, exit_game_day: 17, exit_reason: left, entered_park: true, stay_game_days: 159}
+        - {park_id: park1, session_id: s1, guest_key: 10, arrival_game_year: 1, arrival_game_month: 5, arrival_game_day: 13, arrival_game_ticks: 900, in_cohort: true, is_open: false, exit_game_year: 1, exit_game_month: 7, exit_game_day: 19, exit_reason: left, entered_park: true, stay_game_days: 67}
+        - {park_id: park1, session_id: s1, guest_key: 11, arrival_game_year: 1, arrival_game_month: 6, arrival_game_day: 15, arrival_game_ticks: 1000, in_cohort: false, is_open: false, exit_game_year: 2, exit_game_month: 5, exit_game_day: 21, exit_reason: left, entered_park: true, stay_game_days: 220}

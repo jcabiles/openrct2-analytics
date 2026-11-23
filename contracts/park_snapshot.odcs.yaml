@@ -1,0 +1,106 @@
+apiVersion: v3.2.0
+kind: DataContract
+id: park_snapshot
+name: park_snapshot
+version: 1.8.0
+status: active
+description:
+  purpose: Daily park snapshot payload, one event per session per game day.
+servers:
+  - server: parquet_through_duckdb
+    type: duckdb
+    database: __DATABASE__
+    schema: main
+schema:
+  - name: park_snapshot
+    physicalType: view
+    description: >-
+      One row per park snapshot event, taken at the start of a game day. The data is Parquet
+      (v1/park_snapshot.parquet), checked through a throwaway DuckDB view. A reload can give two rows for one park
+      and game day, but never two for one session and game day.
+    properties:
+      - name: session_id
+        logicalType: string
+        physicalType: VARCHAR
+        required: true
+        primaryKey: true
+        primaryKeyPosition: 1
+        description: Plugin start identifier; text, no unit. Part of the grain.
+      - name: game_year
+        logicalType: integer
+        physicalType: INTEGER
+        required: true
+        primaryKey: true
+        primaryKeyPosition: 2
+        description: In-game year, from 1; game calendar clock. Part of the grain.
+      - name: game_month
+        logicalType: integer
+        physicalType: INTEGER
+        required: true
+        primaryKey: true
+        primaryKeyPosition: 3
+        logicalTypeOptions:
+          minimum: 0
+          maximum: 7
+        description: In-game month, 0 to 7 (March = 0); game calendar clock. Part of the grain.
+      - name: game_day
+        logicalType: integer
+        physicalType: INTEGER
+        required: true
+        primaryKey: true
+        primaryKeyPosition: 4
+        logicalTypeOptions:
+          minimum: 1
+        description: In-game day of the month, from 1; game calendar clock. Part of the grain.
+      - name: cash_tenths
+        logicalType: integer
+        physicalType: BIGINT
+        required: true
+        description: Park cash in tenths of a dollar (game money unit), may be negative; sampled at the start of the game day.
+      - name: guests_in_park
+        logicalType: integer
+        physicalType: INTEGER
+        required: true
+        logicalTypeOptions:
+          minimum: 0
+        description: Guests inside the park, a count at the start of the game day.
+      - name: park_rating
+        logicalType: integer
+        physicalType: INTEGER
+        required: true
+        logicalTypeOptions:
+          minimum: 0
+          maximum: 999
+        description: Park rating in engine units, 0 to 999, at the start of the game day.
+      - name: total_admissions
+        logicalType: integer
+        physicalType: BIGINT
+        required: true
+        logicalTypeOptions:
+          minimum: 0
+        description: Cumulative guest admissions, a count at the start of the game day; a reload can rewind it.
+      - name: weather
+        logicalType: string
+        physicalType: VARCHAR
+        required: false
+        description: >-
+          The park's current weather at the start of the game day, as the game names it; text, no unit. Expected
+          values (from the 0.5.5 type definitions, not yet observed from the real game): sunny, partiallyCloudy,
+          cloudy, rain, heavyRain, thunder, snow, heavySnow or blizzard. Absent in events from plugins before 0.3.0.
+      - name: temperature_c
+        logicalType: integer
+        physicalType: INTEGER
+        required: false
+        description: >-
+          The park's current temperature at the start of the game day, in degrees Celsius (the engine stores Celsius
+          and converts only for display; the unit is unverified against the real game), may be negative. Absent in
+          events from plugins before 0.3.0.
+    quality:
+      - type: sql
+        description: cash_tenths is a whole number
+        query: SELECT COUNT(*) FROM {object} WHERE cash_tenths <> CAST(cash_tenths AS BIGINT)
+        mustBe: 0
+      - type: sql
+        description: total_admissions is a whole number
+        query: SELECT COUNT(*) FROM {object} WHERE total_admissions <> CAST(total_admissions AS BIGINT)
+        mustBe: 0

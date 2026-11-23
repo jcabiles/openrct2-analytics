@@ -1,0 +1,670 @@
+# Code spans the player guide shows as program text or commands: the setup part
+# (docs/showcase/story/install-by-hand.md), the play part (how-the-game-works.md) and the help part
+# (fix-a-problem.md). Every code span on the built guide must equal a `shown`
+# entry here; each `shown` entry must appear in the guide's text; each `phrases` entry must be
+# found, as a fixed string, in its `source`. A row has exactly one of `source` (the repo file whose
+# code prints or defines the text) and `outside` (the outside tool that prints it).
+#
+# A red row means the code or the passage changed. The fix is to update the passage and the row in
+# the same change (spec docs/ai-dlc/specs/player-guide.md, R29): the change that edits a producer
+# fixes its row here and its words in the passage file. Outside rows have no code to compare; the
+# dry run of the install steps in a new macOS account checks them (spec R31).
+
+[[row]]
+id = "doctor-whole"
+where = "make setup: the healthy doctor line"
+shown = ["doctor: the Python environment is whole."]
+source = "scripts/doctor.py"
+phrases = ["doctor: the Python environment is whole."]
+
+[[row]]
+id = "doctor-damaged"
+where = "make setup: the damage line"
+shown = ["doctor: the Python environment is damaged."]
+source = "scripts/doctor.py"
+phrases = ["doctor: the Python environment is damaged."]
+
+[[row]]
+id = "doctor-repair"
+where = "make setup: the repair doctor prints for damage"
+shown = ["rm -rf .venv && make setup"]
+source = "scripts/doctor.py"
+phrases = ["rm -rf .venv && make setup"]
+
+[[row]]
+id = "make-setup"
+where = "the setup command"
+shown = ["make setup"]
+source = "Makefile"
+phrases = ["setup: # Create or update the venv and deps"]
+
+[[row]]
+id = "make-launcher"
+where = "the launcher build command"
+shown = ["make launcher"]
+source = "Makefile"
+phrases = ['launcher: # Build the "OpenRCT2 Enterprise" app in ~/Applications']
+
+[[row]]
+id = "launcher-app"
+where = "the app name and the folder the launcher builds it in"
+shown = ["OpenRCT2 Enterprise", "~/Applications"]
+source = "Makefile"
+phrases = ['apps="$$HOME/Applications"; app="$$apps/OpenRCT2 Enterprise.app"']
+
+[[row]]
+id = "launcher-built-line"
+where = "make launcher: the line it prints when the app is built"
+shown = ["Drag it to the Dock; double-click it to record and play the company park."]
+source = "Makefile"
+phrases = ['echo "Built $$app. Drag it to the Dock; double-click it to record and play the company park."']
+
+[[row]]
+id = "setup-missing-tool-messages"
+where = "make setup: what the shell and make print when uv, npm or make is missing"
+shown = [
+  "python3.12: command not found",
+  "make: npm: No such file or directory",
+  "command not found: make",
+]
+outside = "the shell and make"
+
+[[row]]
+id = "node-version"
+where = "the Node version the project uses"
+shown = ["Node 24", "v24"]
+source = ".github/workflows/ci.yml"
+phrases = ['node-version: "24"']
+
+[[row]]
+id = "python-version"
+where = "the Python version uv installs"
+shown = ["Python 3.12"]
+source = ".python-version"
+phrases = ["3.12"]
+
+[[row]]
+id = "openrct2-version"
+where = "the game version that must be installed first"
+shown = ["OpenRCT2 0.5.6"]
+source = "README.md"
+phrases = ["OpenRCT2 0.5.6"]
+
+[[row]]
+id = "apple-developer-tools"
+where = "step-dev-tools: Apple's command and its message"
+shown = ["xcode-select --install", "already installed"]
+outside = "Apple's xcode-select tool"
+
+[[row]]
+id = "homebrew-installer"
+where = "step-homebrew: the install command on brew.sh and what the installer prints"
+shown = [
+  '/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"',
+  "https://brew.sh",
+  "Installation successful!",
+  "Need sudo access on macOS",
+]
+outside = "the Homebrew installer"
+
+[[row]]
+id = "homebrew-path-line"
+where = "step-homebrew-path: the PATH line for Apple silicon"
+shown = [
+  "echo 'eval \"$(/opt/homebrew/bin/brew shellenv)\"' >> ~/.zprofile && eval \"$(/opt/homebrew/bin/brew shellenv)\"",
+]
+outside = "the Homebrew installer's Next steps"
+
+[[row]]
+id = "intel-homebrew-error"
+where = "step-homebrew-path fix: zsh's error in every new window of an Intel Mac that ran the Apple line, and the command that opens the file"
+shown = [
+  "no such file or directory: /opt/homebrew/bin/brew",
+  "open -e ~/.zprofile",
+]
+outside = "the zsh shell and macOS open"
+
+[[row]]
+id = "homebrew-install-tools"
+where = "step-tools: the install command and Homebrew's error line"
+shown = ["brew install node@24 direnv uv", "Error:"]
+outside = "Homebrew"
+
+[[row]]
+id = "node-path-line"
+where = "step-node-path: the line Homebrew prints for the keg-only node@24"
+shown = [
+  "echo 'export PATH=\"/opt/homebrew/opt/node@24/bin:$PATH\"' >> ~/.zshrc",
+]
+outside = "Homebrew's note for node@24"
+
+[[row]]
+id = "direnv-hook-line"
+where = "step-direnv-hook: direnv's shell line and the check command"
+shown = [
+  "echo 'eval \"$(direnv hook zsh)\"' >> ~/.zshrc",
+  "node --version && uv --version && direnv version",
+]
+outside = "direnv, Node and uv"
+
+[[row]]
+id = "direnv-messages"
+where = "step-direnv-allow: the trust command and direnv's lines"
+shown = ["direnv allow", "direnv:", "is blocked", ".envrc"]
+outside = "direnv"
+
+[[row]]
+id = "git-clone"
+where = "step-clone: the whole clone command, the start of its first line, its two refusals and its refusal for a folder that exists"
+shown = [
+  "git clone https://github.com/jcabiles/openrct2-analytics.git ~/openrct2-analytics",
+  "Cloning into",
+  "Repository not found",
+  "Authentication failed",
+  "openrct2-analytics",
+  "already exists and is not an empty directory",
+  "git -C ~/openrct2-analytics remote -v",
+]
+outside = "git"
+
+[[row]]
+id = "shell-messages"
+where = "step-cd, the move-the-folder help and the missing-tool fixes: zsh's own words"
+shown = [
+  "cd ~/openrct2-analytics",
+  "command not found",
+  "command not found: brew",
+  "no such file or directory",
+  "dquote>",
+]
+outside = "the zsh shell"
+
+# Game rows: the "how a play works" section (docs/showcase/story/how-the-game-works.md). Each
+# source is the file that prints or defines the quoted text; a phrase is a fixed string in it.
+
+[[row]]
+id = "launcher-close"
+where = "the last line of the launcher window"
+shown = ["Press Return to close this window."]
+source = "launcher/play-company.command"
+phrases = ['read -r "?Press Return to close this window."']
+
+[[row]]
+id = "launcher-direnv-lines"
+where = "the launcher's two direnv lines and the install command in the first"
+shown = [
+  "direnv is not on PATH",
+  "direnv does not trust this folder yet",
+]
+source = "launcher/play-company.command"
+phrases = [
+  "direnv is not on PATH. Install it with: brew install direnv; then run: direnv allow, in $PWD.",
+  "direnv does not trust this folder yet. Run: direnv allow, in $PWD. Nothing was changed.",
+]
+
+[[row]]
+id = "launcher-late-start"
+where = "capture: the warning when the game opens after the 60-second wait"
+shown = ["NOT recording"]
+source = "src/openrct2_analytics/ingest/capture_session.py"
+phrases = ["WARNING: OpenRCT2 is running now, but NOT recording:"]
+
+[[row]]
+id = "launcher-count-question"
+where = "the launcher's question of Company, Sandbox or autopilot and its answers"
+shown = [
+  "Where should this play count?",
+  "Company",
+  "Sandbox",
+  "Run autopilot on a finished park",
+  "company",
+  "practice",
+  "Where should this play count? 1. Company — counts toward the company's results 2. Sandbox — saved, but kept out of the company's results (a company park stays company) 3. Run autopilot on a finished park — the game plays one company year by itself (up to about two hours), then it is filed",
+]
+source = "launcher/play-company.command"
+phrases = [
+  'print "Where should this play count?"',
+  "print \"1. Company — counts toward the company's results\"",
+  "print \"2. Sandbox — saved, but kept out of the company's results (a company park stays company)\"",
+  'print "3. Run autopilot on a finished park — the game plays one company year by itself (up to about two hours), then it is filed"',
+  "1) choice=company ;;",
+  "2) choice=practice ;;",
+]
+
+[[row]]
+id = "launcher-waiting-offer"
+where = "the launcher's offer to file the waiting play first"
+shown = ["File the waiting play now, before this play?"]
+source = "launcher/play-company.command"
+phrases = ['print "File the waiting play now, before this play?"']
+
+[[row]]
+id = "unfiled-waiting-list"
+where = "make unfiled: the heading of the waiting play and the seq-audit line"
+shown = ["Play waiting to be filed:", "failed its seq audit"]
+source = "src/openrct2_analytics/ingest/unfiled.py"
+phrases = [
+  'lines = [first, "Play waiting to be filed:"]',
+  "failed its seq audit, so it is not offered for filing",
+]
+
+[[row]]
+id = "seq-delete-preview"
+where = "make after-play: the refusal for a session that failed its seq audit, and the preview command it names"
+shown = ["make delete-company-data SESSION=\"$SESSION_ID\"", "SESSION=\"$SESSION_ID\""]
+source = "src/openrct2_analytics/ingest/after_play.py"
+phrases = [
+  "run make delete-company-data SESSION={min(failed)} ",
+  "(a preview; it deletes nothing)",
+]
+
+[[row]]
+id = "launcher-not-filed"
+where = "the launcher's failed-play line and the filing command it prints"
+shown = [
+  "This play was not filed.",
+  "make auto-file DATA_SET=company COUNT_AS=company",
+]
+source = "launcher/play-company.command"
+phrases = [
+  'print "This play was not filed. If the report above names a seq problem, do not file it; otherwise run: make auto-file DATA_SET=company COUNT_AS=$choice"',
+  'print "Autopilot did not finish every step; see the messages above.',
+  "file with: make auto-file DATA_SET=company COUNT_AS=company",
+]
+
+[[row]]
+id = "filing-rerun"
+where = "make after-play: the failed-step line that names the rerun command"
+shown = ["Fix the cause, then rerun the whole chain:"]
+source = "src/openrct2_analytics/ingest/after_play.py"
+phrases = ['f"Fix the cause, then rerun the whole chain: {rerun}"']
+
+[[row]]
+id = "filing-rerun-launcher"
+where = "the launcher: the line printed when filing does not complete"
+shown = ["Filing did not complete"]
+source = "launcher/play-company.command"
+phrases = ['print "Filing did not complete; see the messages above. To try again, run: make auto-file DATA_SET=company COUNT_AS=company"']
+
+[[row]]
+id = "filing-joins-line"
+where = "make auto-file: the sign that a new company park was filed"
+shown = ["<park name> joins the company as Park <number>, starting in company year <year>"]
+source = "src/openrct2_analytics/ingest/several_parks.py"
+phrases = ["{name} joins the company as Park {number}, starting in company year {year}"]
+
+[[row]]
+id = "filing-new-park-question"
+where = "make auto-file: the question about each new park of a play and its answers"
+shown = ["is new in this play. Which is it?", "Opened first", "Opened second"]
+source = "src/openrct2_analytics/ingest/several_parks.py"
+phrases = [
+  "is new in this play. Which is it?",
+  'options = [f"{rank}. Opened {ordinal(rank)}" for rank in range(1, count + 1)]',
+  '"Opened first", "Opened second"',
+]
+
+[[row]]
+id = "filing-order-refusal"
+where = "make auto-file: the reason named when an Opened answer is out of order"
+shown = ["order"]
+source = "src/openrct2_analytics/ingest/auto_file.py"
+phrases = ['_NotFiled("order", str(error))']
+
+[[row]]
+id = "filing-earlier-park-answers"
+where = "make auto-file: the question about a park from an earlier play and its third answer"
+shown = ["from an earlier play is waiting. Where should it count?", "Don't file now"]
+source = "src/openrct2_analytics/ingest/auto_file.py"
+phrases = [
+  "from an earlier play is waiting. Where should it count?",
+  "\"1. Company\\n2. Sandbox\\n3. Don't file now\"",
+]
+
+[[row]]
+id = "backup-line"
+where = "make play: the report line that names each park's backup copy, and the words before the copy's name"
+shown = ["Backup:", "copied to save/"]
+source = "src/openrct2_analytics/ingest/save_backup.py"
+phrases = ["f\"Backup: {label}'s last recorded save", "copied to {shown}; ", 'return f"save/{daily.name}"']
+
+[[row]]
+id = "backup-folder"
+where = "the folder of the never-replaced archive of backup copies (its default)"
+shown = ["local/park-backups/"]
+source = "src/openrct2_analytics/config.py"
+phrases = ['"OPENRCT2_BACKUP_DIR", "local/park-backups"']
+
+[[row]]
+id = "backup-names"
+where = "the dated backup copy in the game's save folder: the mark and the date format of its name"
+shown = [
+  "<park name>-last-plugin-save-YYYY-MM-DD.park",
+  "-last-plugin-save-",
+]
+source = "src/openrct2_analytics/ingest/save_backup.py"
+phrases = [
+  'BACKUP_MARK = "-last-plugin-save-"',
+  "{label}{BACKUP_MARK}{ended:%Y-%m-%d}{PARK_SUFFIX}",
+]
+
+[[row]]
+id = "autopilot-menu"
+where = "the launcher's autopilot park list: its question, a ready park, a park that cannot run and the way back"
+shown = [
+  "Not ready:",
+  "0",
+  "Which park should autopilot run? 1. <park> Not ready: <park>: <reason> 0. Back to the first question",
+]
+source = "launcher/play-company.command"
+phrases = [
+  'print "Which park should autopilot run?"',
+  'print -r -- "$n. $ready_labels[$n]"',
+  'not_ready+=("Not ready: $fields[2]: $fields[3]")',
+  'print "0. Back to the first question"',
+]
+
+[[row]]
+id = "autopilot-ready-prompt"
+where = "the launcher's request to type the readiness sentence"
+shown = ["To confirm that it is ready, type this sentence exactly:"]
+source = "launcher/play-company.command"
+phrases = ["To confirm that it is ready, type this sentence exactly:"]
+
+[[row]]
+id = "autopilot-ready-phrase"
+where = "the readiness sentence of a park's first autopilot run (ADR 0049)"
+shown = ["is profitable and its scenario challenge is complete"]
+source = "src/openrct2_analytics/ingest/play_mode_feed.py"
+phrases = ['READY_SUFFIX = " is profitable and its scenario challenge is complete"']
+
+[[row]]
+id = "autopilot-run-line"
+where = "the launcher's line before an autopilot year and its failure line"
+shown = [
+  "This can take up to about two hours. Keep this window open until it says it finished.",
+  "Autopilot did not finish every step",
+]
+source = "launcher/play-company.command"
+phrases = [
+  "This can take up to about two hours. Keep this window open until it says it finished.",
+  'print "Autopilot did not finish every step',
+]
+
+[[row]]
+id = "dashboard-address"
+where = "the address of the company dashboard"
+shown = ["http://127.0.0.1:8780/"]
+source = "launcher/play-company.command"
+phrases = ["dashboard_port=8780", 'dashboard_url="http://127.0.0.1:${dashboard_port}/"']
+
+[[row]]
+id = "dashboard-command"
+where = "the command that serves the company dashboard without a play"
+shown = ["make dashboard DATA_SET=company"]
+source = "Makefile"
+phrases = ["dashboard: # Serve the company dashboard on localhost from the development warehouse until stopped (DATA_SET=company;"]
+
+[[row]]
+id = "dashboard-page-executive"
+where = "the dashboard's first page"
+shown = ["Executive"]
+source = "src/openrct2_analytics/dashboard/app/executive.html"
+phrases = ["<title>Company Report: Executive</title>"]
+
+[[row]]
+id = "dashboard-page-finance"
+where = "a dashboard page"
+shown = ["Finance"]
+source = "src/openrct2_analytics/dashboard/app/finance.html"
+phrases = ["<title>Company Report: Finance</title>"]
+
+[[row]]
+id = "dashboard-page-attractions"
+where = "a dashboard page"
+shown = ["Attractions"]
+source = "src/openrct2_analytics/dashboard/app/attractions.html"
+phrases = ["<title>Company Report: Attractions</title>"]
+
+[[row]]
+id = "dashboard-page-pricing"
+where = "a dashboard page"
+shown = ["Pricing"]
+source = "src/openrct2_analytics/dashboard/app/pricing.html"
+phrases = ["<title>Company Report: Pricing</title>"]
+
+[[row]]
+id = "dashboard-page-operations"
+where = "a dashboard page"
+shown = ["Operations"]
+source = "src/openrct2_analytics/dashboard/app/operations.html"
+phrases = ["<title>Company Report: Operations</title>"]
+
+[[row]]
+id = "node-path-line-intel"
+where = "step-node-path: the line for the keg-only node@24 on an Intel Mac, where Homebrew lives in /usr/local"
+shown = [
+  "echo 'export PATH=\"/usr/local/opt/node@24/bin:$PATH\"' >> ~/.zshrc",
+]
+outside = "Homebrew's note for node@24 on an Intel Mac"
+
+[[row]]
+id = "capture-progress"
+where = "make play: the line before the game opens and the line when the first event lands"
+shown = ["Opening OpenRCT2.", "events arriving"]
+source = "src/openrct2_analytics/ingest/capture_session.py"
+phrases = ['say("Opening OpenRCT2.")', 'say("events arriving")']
+
+[[row]]
+id = "backup-no-save"
+where = "make play: the backup line when no save was recorded in the run"
+shown = ["Backup: no recorded save in this run, so no backup was made."]
+source = "src/openrct2_analytics/ingest/save_backup.py"
+phrases = ["Backup: no recorded save in this run, so no backup was made."]
+
+[[row]]
+id = "backup-warnings"
+where = "make play: the two warnings before play about a save that changed while nothing was recording"
+shown = ["was saved over while nothing was recording", "changed after the last recorded save"]
+source = "src/openrct2_analytics/ingest/save_backup.py"
+phrases = ["was saved over while nothing was recording;", "changed after the last recorded save;"]
+
+[[row]]
+id = "filing-choice-conflict"
+where = "make auto-file: the question when a Sandbox play loads a company park (SHOWN names the choices)"
+shown = ["is saved as Company, but this play was started as Sandbox."]
+source = "src/openrct2_analytics/ingest/auto_file.py"
+phrases = [
+  'SHOWN = {False: "Company", True: "Sandbox"}',
+  "is saved as {SHOWN[saved]}, but this play was started as ",
+  "{SHOWN[not saved]}.",
+]
+
+[[row]]
+id = "dashboard-not-started"
+where = "the launcher: the line when the dashboard does not answer in time"
+shown = ["The dashboard did not start"]
+source = "launcher/play-company.command"
+phrases = ['print "The dashboard did not start; see $PWD/local/dashboard/server.log."']
+
+[[row]]
+id = "autopilot-year-rule"
+where = "make autopilot-year: the two refusals of the year rule (the second is split over two source lines) and the note on parks not yet registered"
+shown = [
+  "is itself the managed park of company year",
+  "no other registered company park has a managed day in",
+  "Waiting to register (they count once registered)",
+]
+source = "src/openrct2_analytics/ingest/autopilot_year.py"
+phrases = [
+  "is itself the managed park of company year",
+  "but no other registered company ",
+  'f"park has a managed day in {target} yet.',
+  "Waiting to register (they count once registered)",
+]
+
+[[row]]
+id = "homebrew-check"
+where = "step-homebrew-path: the command that checks Terminal finds Homebrew"
+shown = ["brew --version"]
+outside = "Homebrew"
+
+[[row]]
+id = "github-sign-in"
+where = "step-sign-in: the GitHub sign-in tool, its sign-in command and its success line"
+shown = ["brew install gh", "gh auth login", "Logged in as"]
+outside = "Homebrew and GitHub's gh tool"
+
+[[row]]
+id = "launcher-no-game"
+where = "make launcher: the line when OpenRCT2.app is in neither Applications folder"
+shown = ["OpenRCT2.app was not found in /Applications or ~/Applications"]
+source = "Makefile"
+phrases = ["OpenRCT2.app was not found in /Applications or ~/Applications"]
+
+[[row]]
+id = "dashboard-first-month"
+where = "the dashboard's Executive page: the start of its top sentence after the first closed month"
+shown = ["By the end of March 2000"]
+source = "src/openrct2_analytics/dashboard/app/executive.js"
+phrases = ['"By the end of ", [mon + " " + Y], " the company had made "']
+
+[[row]]
+id = "dashboard-no-month"
+where = "the dashboard's message when no monthly statement has closed"
+shown = ["No monthly statement is in the working copy yet."]
+source = "src/openrct2_analytics/dashboard/app/shared.js"
+phrases = ["No monthly statement is in the working copy yet."]
+
+[[row]]
+id = "seq-word"
+where = "the word the launcher names for a recording problem that must not be filed"
+shown = ["names a seq problem"]
+source = "launcher/play-company.command"
+phrases = ["If the report above names a seq problem, do not file it"]
+
+[[row]]
+id = "unfiled-recording"
+where = "make unfiled: the line when a recording is still live"
+shown = ["A recording is still being written"]
+source = "src/openrct2_analytics/ingest/unfiled.py"
+phrases = ['"A recording is still being written (the game is running, a raw file changed in the last "']
+
+[[row]]
+id = "capture-did-not-start"
+where = "make play: the line when the game does not start"
+shown = ["OpenRCT2 did not start; nothing was recorded."]
+source = "src/openrct2_analytics/ingest/capture_session.py"
+phrases = ['GAME_DID_NOT_START = "OpenRCT2 did not start; nothing was recorded. Open the launcher again."']
+
+[[row]]
+id = "backup-failed"
+where = "make play: the lines when a backup copy fails or is skipped"
+shown = ["Backup FAILED", "No backup made for"]
+source = "src/openrct2_analytics/ingest/save_backup.py"
+phrases = ["f\"Backup FAILED for {label}'s archive copy", 'f"No backup made for {label}: its last recorded save']
+
+[[row]]
+id = "autopilot-nothing-written"
+where = "every refusal of make autopilot-year ends with this sentence"
+shown = ["Nothing was written."]
+source = "src/openrct2_analytics/ingest/game_settings.py"
+phrases = ['NOTHING_WRITTEN = "Nothing was written."']
+
+[[row]]
+id = "autopilot-not-touched"
+where = "make autopilot-year: the line when a run stops before landing"
+shown = ["Company data was not touched"]
+source = "src/openrct2_analytics/ingest/autopilot_year.py"
+phrases = ['f"Company data was not touched; the run folder is kept at {work}."']
+
+[[row]]
+id = "autopilot-landed"
+where = "make autopilot-year: the success line naming the company year played, and the report line naming the save to load next"
+shown = ["played company year", "To refurbish the park, load save/"]
+source = "src/openrct2_analytics/ingest/autopilot_report.py"
+phrases = ['f"autopilot-year: park {park_id} played company year {facts.target_year} to 1 March "', 'f"To refurbish the park, load save/{facts.dated}."']
+
+[[row]]
+id = "autopilot-binary"
+where = "make autopilot-year: the refusal when the game binary is not found"
+shown = ["OPENRCT2_BINARY does not name an executable file"]
+source = "src/openrct2_analytics/ingest/bench_setup.py"
+phrases = ['f"OPENRCT2_BINARY does not name an executable file (from {binary_source}). "']
+
+[[row]]
+id = "autopilot-autosave"
+where = "make autopilot-year: the refusal while a real autosave is under 10 minutes old"
+shown = ["The newest real OpenRCT2 autosave is"]
+source = "src/openrct2_analytics/ingest/bench_setup.py"
+phrases = ['f"The newest real OpenRCT2 autosave is {(now - max(times)) / 60:.1f} minutes old, so "', "AUTOSAVE_QUIET_SECONDS = 600.0"]
+
+[[row]]
+id = "autopilot-ready-refusal"
+where = "make autopilot-year: the refusal of a first run whose sentence does not match"
+shown = ["Confirm it is ready with"]
+source = "src/openrct2_analytics/ingest/autopilot_year.py"
+phrases = ["first autopilot run. Confirm it is ready with "]
+
+[[row]]
+id = "autopilot-did-not-start"
+where = "the launcher: the line when the step before an autopilot run fails"
+shown = ["Autopilot did not start"]
+source = "launcher/play-company.command"
+phrases = ['print "Autopilot did not start; see the messages above. No autopilot run was started.']
+
+[[row]]
+id = "delete-preview-and-confirm"
+where = "make delete-company-data: the confirmation phrase of a session delete"
+shown = [
+  'make delete-company-data SESSION="$SESSION_ID" CONFIRM="delete company session $SESSION_ID"',
+  "confirmation:",
+]
+source = "src/openrct2_analytics/ingest/delete_plan.py"
+phrases = ['return f"delete company session {self.session}"', 'print(f"confirmation: {plan.scope.phrase!r}")']
+
+[[row]]
+id = "delete-after-go-live"
+where = "make delete-company-data: the refusal of a named delete after go-live"
+shown = ["raw captures are permanent since"]
+source = "src/openrct2_analytics/ingest/delete_data.py"
+phrases = ['f"raw captures are permanent since {live}"']
+
+[[row]]
+id = "delete-rebuild-and-ready-phrase"
+where = "make delete-company-data: the rebuild line of a named delete's preview and the refusal that names the whole-park form"
+shown = ["make pipeline DATA_SET=company", "holds the ready phrase of park", "PARK=\"$PARK_ID\"", "scope: park="]
+source = "src/openrct2_analytics/ingest/delete_plan.py"
+phrases = [
+  'print("run `make pipeline DATA_SET=company` to rebuild")',
+  'f"session {session} holds the ready phrase of park {label.park_id}; delete the other "',
+  'or the whole park with PARK={label.park_id}',
+  'print(f"scope: park={plan.scope.park!r}, session={plan.scope.session!r}")',
+]
+
+[[row]]
+id = "make-unfiled"
+where = "the command that lists the play waiting to be filed; it prints nothing when none waits"
+shown = ["make unfiled DATA_SET=company"]
+source = "Makefile"
+phrases = ["unfiled: # Print the launcher's status word and the play waiting to be filed; nothing when none waits."]
+
+[[row]]
+id = "delete-id-variables"
+where = "the two shell variables the delete commands read the recording's and the park's IDs from, and their stand-in value"
+shown = ["SESSION_ID='EXAMPLE-SESSION-ID'", "EXAMPLE-SESSION-ID", "PARK_ID"]
+outside = "the zsh shell"
+
+[[row]]
+id = "filing-partial"
+where = "make auto-file: the lines printed when filing stops after some parks were filed"
+shown = ["To file the rest, run", "already registered by this run:"]
+source = "src/openrct2_analytics/ingest/several_parks.py"
+phrases = ['f"To file the rest, run: make auto-file DATA_SET=company COUNT_AS={count_as} "', "auto-file: already registered by this run:"]
+
+[[row]]
+id = "filing-nothing-waiting"
+where = "make auto-file: the line when no play waits to be filed"
+shown = ["auto-file: nothing is waiting to be filed."]
+source = "src/openrct2_analytics/ingest/auto_file.py"
+phrases = ['print("auto-file: nothing is waiting to be filed.")']

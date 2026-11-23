@@ -1,0 +1,13 @@
+{
+  "name": "company_year",
+  "relation": "marts.obt_company_year",
+  "columns": [
+    "company_year",
+    "parks_reporting",
+    "parks_partial_first_season",
+    "statements_kept",
+    "months_checked",
+    "operating_profit"
+  ],
+  "rows": []
+}

@@ -1,0 +1,770 @@
+version: 2
+
+models:
+  - name: stg_ride_snapshot
+    description: >-
+      Answers which rides, stalls and facilities the park has, and how each is rated, priced and earning when it
+      is read, so ride-level questions start from one clean row per reading. Grain: one row per ride_snapshot
+      event, which is one per ride, stall or facility per snapshot step; a ride is read once per game day; the
+      unit and clock of each column are in its description. Key: event_id, unique after the dedupe that keeps
+      the first-received copy of a repeated delivery (the contract's natural key is session_id, ride_id and
+      game_ticks_elapsed). Renames, casts and placeholders to null only: money is converted from tenths of a
+      dollar to dollars here, once, except value_tenths, which passes through raw because its unit is
+      unverified. Unit: none for the model as a whole; clock: game, at the snapshot step.
+    meta:
+      contract_version: 1.8.0
+      expected_min_rows: 1
+    config:
+      contract:
+        enforced: true
+    data_tests:
+      - repeat_delivery_payload_differs:
+          arguments:
+            source_relation: source('landing', 'ride_snapshot')
+    columns:
+      - name: schema_version
+        description: "Major version of the contract set; unit: count (always 1 here); no clock."
+        data_type: integer
+        data_tests:
+          - not_null
+      - name: event_type
+        description: "Event kind (ride_snapshot here); text, no unit, no clock."
+        data_type: varchar
+        data_tests:
+          - not_null
+      - name: plugin_version
+        description: "Plugin build that sent the event; text version, no unit, no clock."
+        data_type: varchar
+        data_tests:
+          - not_null
+      - name: park_id
+        description: "Stable park identifier from park storage; text, no unit, no clock."
+        data_type: varchar
+        data_tests:
+          - not_null
+      - name: session_id
+        description: "Plugin start identifier, new on every start; text, no unit, no clock. Part of the contract's natural key."
+        data_type: varchar
+        data_tests:
+          - not_null
+      - name: seq
+        description: "Order within the session across all event types, from 1; unit: count; no clock (session order, not a time)."
+        data_type: bigint
+        data_tests:
+          - not_null
+      - name: event_id
+        description: "session_id-seq; text, one per row after the dedupe; no unit, no clock."
+        data_type: varchar
+        data_tests:
+          - not_null
+          - unique
+      - name: game_year
+        description: "In-game year, from 1; unit: year; clock: game calendar."
+        data_type: integer
+        data_tests:
+          - not_null
+      - name: game_month
+        description: "In-game month, 0 to 7 (March = 0); unit: month; clock: game calendar."
+        data_type: integer
+        data_tests:
+          - not_null
+      - name: game_day
+        description: "In-game day of the month, from 1; unit: day; clock: game calendar."
+        data_type: integer
+        data_tests:
+          - not_null
+      - name: game_ticks_elapsed
+        description: "Game ticks since the park began, the tick at which the snapshot step ran; unit: game tick; clock: game. Part of the contract's natural key."
+        data_type: bigint
+        data_tests:
+          - not_null
+      - name: emitted_at
+        description: "Producer time when the event was sent; unit: timestamp (UTC); clock: wall clock."
+        data_type: timestamp with time zone
+        data_tests:
+          - not_null
+      - name: received_at
+        description: "Listener time when the line landed, the first key of the dedupe order; unit: timestamp (UTC); clock: wall clock."
+        data_type: timestamp with time zone
+        data_tests:
+          - not_null
+      - name: _raw_file
+        description: "Base name of the raw JSON Lines file the delivery came from, never a path; text, no unit, no clock."
+        data_type: varchar
+        data_tests:
+          - not_null
+      - name: _raw_line
+        description: "1-based physical line number of the delivery in that raw file, blank lines counted; unit: line number; no clock."
+        data_type: bigint
+        data_tests:
+          - not_null
+      - name: ride_id
+        description: "The game's ride slot number, a whole number; the game reuses a slot after demolition, so it is not an identity by itself; no unit, no clock. Part of the contract's natural key."
+        data_type: integer
+        data_tests:
+          - not_null
+      - name: ride_name
+        description: "The ride's name when read; text, no unit, no clock (the player can rename a ride)."
+        data_type: varchar
+        data_tests:
+          - not_null
+      - name: ride_type
+        description: "The game's built-in ride type number; no unit, no clock."
+        data_type: integer
+        data_tests:
+          - not_null
+      - name: ride_object
+        description: "The ride's object identifier, for example rct2.ride.burgb; text, no unit, no clock."
+        data_type: varchar
+        data_tests:
+          - not_null
+      - name: classification
+        description: "What kind of ride it is: ride, stall or facility; text, no unit, no clock."
+        data_type: varchar
+        data_tests:
+          - not_null
+      - name: status
+        description: "Operating state when read: closed, open, testing or simulating; text, no unit, no clock."
+        data_type: varchar
+        data_tests:
+          - not_null
+      - name: excitement_hundredths
+        description: "Excitement rating when the snapshot step ran; unit: hundredths of a rating point (652 means 6.52); clock: game, at the snapshot step. Null for an unrated ride (the game sends -1)."
+        data_type: integer
+      - name: intensity_hundredths
+        description: "Intensity rating when the snapshot step ran; unit: hundredths of a rating point (652 means 6.52); clock: game, at the snapshot step. Null for an unrated ride (the game sends -1)."
+        data_type: integer
+      - name: nausea_hundredths
+        description: "Nausea rating when the snapshot step ran; unit: hundredths of a rating point (652 means 6.52); clock: game, at the snapshot step. Null for an unrated ride (the game sends -1)."
+        data_type: integer
+      - name: price_1_usd
+        description: "First price in US dollars (decimal(18,2)): a ride's admission price or a stall's first item price; unit: US dollars; clock: game, at the snapshot step. Null when the price list is shorter (an ATM's is empty)."
+        data_type: decimal(18,2)
+      - name: price_2_usd
+        description: "Second price in US dollars (decimal(18,2)): a ride's photo price or a stall's second item price; unit: US dollars; clock: game, at the snapshot step. Null when the price list is shorter."
+        data_type: decimal(18,2)
+      - name: shop_item
+        description: "The game's code for the first item a stall sells; no unit, no clock. Null when the stall sells no item (the game sends 255)."
+        data_type: integer
+      - name: shop_item_secondary
+        description: "The game's code for the second item a stall sells; no unit, no clock. Null when there is no second item (the game sends 255)."
+        data_type: integer
+      - name: total_customers
+        description: "Guests who have used the ride, a lifetime count when read (a reload can rewind it); unit: guests; clock: game, at the snapshot step."
+        data_type: bigint
+        data_tests:
+          - not_null
+      - name: build_date_months_elapsed
+        description: "The month the ride was built, as months elapsed since the park began; unit: month; clock: game calendar."
+        data_type: integer
+        data_tests:
+          - not_null
+      - name: age_months
+        description: "The ride's age when read; unit: game month; clock: game calendar."
+        data_type: integer
+        data_tests:
+          - not_null
+      - name: running_cost_per_fortnight_usd
+        description: "Running cost in US dollars (decimal(18,2)); the game's type definitions say it is billed every fortnight, which is unverified; unit: US dollars; clock: game, at the snapshot step. Null when the game sent a value outside the safe JSON integer range."
+        data_type: decimal(18,2)
+      - name: total_profit_usd
+        description: "Lifetime profit in US dollars (decimal(18,2)) when read, may be negative; unit: US dollars; clock: game, at the snapshot step. Null when the game sent a value outside the safe JSON integer range, such as a never-opened stall's."
+        data_type: decimal(18,2)
+      - name: income_per_game_hour_usd
+        description: "Income in US dollars (decimal(18,2)) per game hour, the Finance tab's per-hour figure; unit: US dollars per game hour; clock: game hour, not a wall-clock hour. Null when the game sent a value outside the safe JSON integer range."
+        data_type: decimal(18,2)
+      - name: profit_per_game_hour_usd
+        description: "Profit in US dollars (decimal(18,2)) per game hour, the Finance tab's per-hour figure, may be negative; unit: US dollars per game hour; clock: game hour, not a wall-clock hour. Null when the game sent a value outside the safe JSON integer range."
+        data_type: decimal(18,2)
+      - name: value_tenths
+        description: "The ride's value as the game reports it, passed through raw and not converted to dollars; unit: unverified (tenths of a dollar is the assumed unit, the engine compares it with prices); clock: game, at the snapshot step."
+        data_type: bigint
+      - name: reliability_pct
+        description: "Reliability as read; unit: percent; clock: game, at the snapshot step."
+        data_type: integer
+      - name: downtime_pct
+        description: "Downtime as read; unit: percent; clock: game, at the snapshot step."
+        data_type: integer
+      - name: satisfaction_pct
+        description: "Guest satisfaction as read; unit: percent; clock: game, at the snapshot step. Null when not yet measured (the game sends 1,275)."
+        data_type: integer
+      - name: guests_on_ride
+        description: "Guests on the ride when read; unit: guests; clock: game, at the snapshot step."
+        data_type: integer
+      - name: station_count
+        description: "Station slots in use when read, a slot is in use when its start is set; unit: stations; clock: game, at the snapshot step."
+        data_type: integer
+        data_tests:
+          - not_null
+      - name: queue_time_max_minutes
+        description: "The largest queue time among the used stations; unit: minutes; clock: game, at the snapshot step. Null when no station is used."
+        data_type: integer
+
+unit_tests:
+  - name: stg_ride_snapshot_keeps_the_first_received_copy_of_each_event
+    description: >-
+      The model keeps the first received copy by received_at, then raw file, then raw line, proving the lower _raw_line wins at equal received_at and _raw_file whatever the input order, and that emitted_at does not override received_at.
+    model: stg_ride_snapshot
+    given:
+      - input: source('landing', 'ride_snapshot')
+        format: sql
+        rows: |
+          select
+            cast(1 as integer) as schema_version,
+            cast('ride_snapshot' as varchar) as event_type,
+            cast('0.1.0' as varchar) as plugin_version,
+            cast('kpark1' as varchar) as park_id,
+            cast('s1' as varchar) as session_id,
+            cast(1 as bigint) as seq,
+            cast('s1-1' as varchar) as event_id,
+            cast(4 as integer) as game_year,
+            cast(5 as integer) as game_month,
+            cast(6 as integer) as game_day,
+            cast(1001 as bigint) as game_ticks_elapsed,
+            cast('2026-09-30 23:40:00+00' as timestamptz) as emitted_at,
+            cast('2026-09-30 23:30:01+00' as timestamptz) as received_at,
+            cast('z.jsonl' as varchar) as _raw_file,
+            cast(90 as bigint) as _raw_line,
+            cast(7 as integer) as ride_id,
+            cast('first received' as varchar) as ride_name,
+            cast(12 as integer) as ride_type,
+            cast('rct2.ride.burgb' as varchar) as ride_object,
+            cast('ride' as varchar) as classification,
+            cast('open' as varchar) as status,
+            cast(652 as integer) as excitement_hundredths,
+            cast(453 as integer) as intensity_hundredths,
+            cast(304 as integer) as nausea_hundredths,
+            cast(1250 as bigint) as price_1_tenths,
+            cast(350 as bigint) as price_2_tenths,
+            cast(21 as integer) as shop_item,
+            cast(22 as integer) as shop_item_secondary,
+            cast(5000 as bigint) as total_customers,
+            cast(31 as integer) as build_date_months_elapsed,
+            cast(32 as integer) as age_months,
+            cast(1234 as bigint) as running_cost_per_fortnight_tenths,
+            cast(7777 as bigint) as total_profit_tenths,
+            cast(888 as bigint) as income_per_game_hour_tenths,
+            cast(666 as bigint) as profit_per_game_hour_tenths,
+            cast(9999 as bigint) as value_tenths,
+            cast(83 as integer) as reliability_pct,
+            cast(14 as integer) as downtime_pct,
+            cast(75 as integer) as satisfaction_pct,
+            cast(41 as integer) as guests_on_ride,
+            cast(2 as integer) as station_count,
+            cast(9 as integer) as queue_time_max_minutes
+          union all
+          select
+            cast(1 as integer), cast('ride_snapshot' as varchar), cast('0.1.0' as varchar), cast('kpark1' as varchar), cast('s1' as varchar),
+            cast(1 as bigint), cast('s1-1' as varchar), cast(4 as integer), cast(5 as integer), cast(6 as integer),
+            cast(1001 as bigint), cast('2026-09-30 23:20:00+00' as timestamptz), cast('2026-09-30 23:30:02+00' as timestamptz), cast('a.jsonl' as varchar), cast(1 as bigint),
+            cast(7 as integer), cast('received later' as varchar), cast(12 as integer), cast('rct2.ride.burgb' as varchar), cast('ride' as varchar),
+            cast('open' as varchar), cast(652 as integer), cast(453 as integer), cast(304 as integer), cast(1250 as bigint),
+            cast(350 as bigint), cast(21 as integer), cast(22 as integer), cast(5000 as bigint), cast(31 as integer),
+            cast(32 as integer), cast(1234 as bigint), cast(7777 as bigint), cast(888 as bigint), cast(666 as bigint),
+            cast(9999 as bigint), cast(83 as integer), cast(14 as integer), cast(75 as integer), cast(41 as integer),
+            cast(2 as integer), cast(9 as integer)
+          union all
+          select
+            cast(1 as integer), cast('ride_snapshot' as varchar), cast('0.1.0' as varchar), cast('kpark1' as varchar), cast('s1' as varchar),
+            cast(2 as bigint), cast('s1-2' as varchar), cast(4 as integer), cast(5 as integer), cast(6 as integer),
+            cast(1002 as bigint), cast('2026-09-30 23:10:00+00' as timestamptz), cast('2026-09-30 23:30:01+00' as timestamptz), cast('b.jsonl' as varchar), cast(1 as bigint),
+            cast(7 as integer), cast('later file' as varchar), cast(12 as integer), cast('rct2.ride.burgb' as varchar), cast('ride' as varchar),
+            cast('open' as varchar), cast(652 as integer), cast(453 as integer), cast(304 as integer), cast(1250 as bigint),
+            cast(350 as bigint), cast(21 as integer), cast(22 as integer), cast(5000 as bigint), cast(31 as integer),
+            cast(32 as integer), cast(1234 as bigint), cast(7777 as bigint), cast(888 as bigint), cast(666 as bigint),
+            cast(9999 as bigint), cast(83 as integer), cast(14 as integer), cast(75 as integer), cast(41 as integer),
+            cast(2 as integer), cast(9 as integer)
+          union all
+          select
+            cast(1 as integer), cast('ride_snapshot' as varchar), cast('0.1.0' as varchar), cast('kpark1' as varchar), cast('s1' as varchar),
+            cast(2 as bigint), cast('s1-2' as varchar), cast(4 as integer), cast(5 as integer), cast(6 as integer),
+            cast(1002 as bigint), cast('2026-09-30 23:50:00+00' as timestamptz), cast('2026-09-30 23:30:01+00' as timestamptz), cast('a.jsonl' as varchar), cast(9 as bigint),
+            cast(7 as integer), cast('earlier file' as varchar), cast(12 as integer), cast('rct2.ride.burgb' as varchar), cast('ride' as varchar),
+            cast('open' as varchar), cast(652 as integer), cast(453 as integer), cast(304 as integer), cast(1250 as bigint),
+            cast(350 as bigint), cast(21 as integer), cast(22 as integer), cast(5000 as bigint), cast(31 as integer),
+            cast(32 as integer), cast(1234 as bigint), cast(7777 as bigint), cast(888 as bigint), cast(666 as bigint),
+            cast(9999 as bigint), cast(83 as integer), cast(14 as integer), cast(75 as integer), cast(41 as integer),
+            cast(2 as integer), cast(9 as integer)
+          union all
+          select
+            cast(1 as integer), cast('ride_snapshot' as varchar), cast('0.1.0' as varchar), cast('kpark1' as varchar), cast('s1' as varchar),
+            cast(3 as bigint), cast('s1-3' as varchar), cast(4 as integer), cast(5 as integer), cast(6 as integer),
+            cast(1003 as bigint), cast('2026-09-30 23:10:00+00' as timestamptz), cast('2026-09-30 23:30:01+00' as timestamptz), cast('a.jsonl' as varchar), cast(7 as bigint),
+            cast(7 as integer), cast('later line loser' as varchar), cast(12 as integer), cast('rct2.ride.burgb' as varchar), cast('ride' as varchar),
+            cast('open' as varchar), cast(652 as integer), cast(453 as integer), cast(304 as integer), cast(1250 as bigint),
+            cast(350 as bigint), cast(21 as integer), cast(22 as integer), cast(5000 as bigint), cast(31 as integer),
+            cast(32 as integer), cast(1234 as bigint), cast(7777 as bigint), cast(888 as bigint), cast(666 as bigint),
+            cast(9999 as bigint), cast(83 as integer), cast(14 as integer), cast(75 as integer), cast(41 as integer),
+            cast(2 as integer), cast(9 as integer)
+          union all
+          select
+            cast(1 as integer), cast('ride_snapshot' as varchar), cast('0.1.0' as varchar), cast('kpark1' as varchar), cast('s1' as varchar),
+            cast(3 as bigint), cast('s1-3' as varchar), cast(4 as integer), cast(5 as integer), cast(6 as integer),
+            cast(1003 as bigint), cast('2026-09-30 23:50:00+00' as timestamptz), cast('2026-09-30 23:30:01+00' as timestamptz), cast('a.jsonl' as varchar), cast(3 as bigint),
+            cast(7 as integer), cast('earlier line' as varchar), cast(12 as integer), cast('rct2.ride.burgb' as varchar), cast('ride' as varchar),
+            cast('open' as varchar), cast(652 as integer), cast(453 as integer), cast(304 as integer), cast(1250 as bigint),
+            cast(350 as bigint), cast(21 as integer), cast(22 as integer), cast(5000 as bigint), cast(31 as integer),
+            cast(32 as integer), cast(1234 as bigint), cast(7777 as bigint), cast(888 as bigint), cast(666 as bigint),
+            cast(9999 as bigint), cast(83 as integer), cast(14 as integer), cast(75 as integer), cast(41 as integer),
+            cast(2 as integer), cast(9 as integer)
+          union all
+          select
+            cast(1 as integer), cast('ride_snapshot' as varchar), cast('0.1.0' as varchar), cast('kpark1' as varchar), cast('s1' as varchar),
+            cast(4 as bigint), cast('s1-4' as varchar), cast(4 as integer), cast(5 as integer), cast(6 as integer),
+            cast(1004 as bigint), cast('2026-09-30 23:10:00+00' as timestamptz), cast('2026-09-30 23:30:04+00' as timestamptz), cast('a.jsonl' as varchar), cast(9 as bigint),
+            cast(14 as integer), cast('line two loser' as varchar), cast(12 as integer), cast('rct2.ride.burgb' as varchar), cast('ride' as varchar),
+            cast('open' as varchar), cast(652 as integer), cast(453 as integer), cast(304 as integer), cast(1250 as bigint),
+            cast(350 as bigint), cast(21 as integer), cast(22 as integer), cast(5000 as bigint), cast(31 as integer),
+            cast(32 as integer), cast(1234 as bigint), cast(7777 as bigint), cast(888 as bigint), cast(666 as bigint),
+            cast(9999 as bigint), cast(83 as integer), cast(14 as integer), cast(75 as integer), cast(41 as integer),
+            cast(2 as integer), cast(9 as integer)
+          union all
+          select
+            cast(1 as integer), cast('ride_snapshot' as varchar), cast('0.1.0' as varchar), cast('kpark1' as varchar), cast('s1' as varchar),
+            cast(4 as bigint), cast('s1-4' as varchar), cast(4 as integer), cast(5 as integer), cast(6 as integer),
+            cast(1004 as bigint), cast('2026-09-30 23:50:00+00' as timestamptz), cast('2026-09-30 23:30:04+00' as timestamptz), cast('a.jsonl' as varchar), cast(2 as bigint),
+            cast(14 as integer), cast('line two first' as varchar), cast(12 as integer), cast('rct2.ride.burgb' as varchar), cast('ride' as varchar),
+            cast('open' as varchar), cast(652 as integer), cast(453 as integer), cast(304 as integer), cast(1250 as bigint),
+            cast(350 as bigint), cast(21 as integer), cast(22 as integer), cast(5000 as bigint), cast(31 as integer),
+            cast(32 as integer), cast(1234 as bigint), cast(7777 as bigint), cast(888 as bigint), cast(666 as bigint),
+            cast(9999 as bigint), cast(83 as integer), cast(14 as integer), cast(75 as integer), cast(41 as integer),
+            cast(2 as integer), cast(9 as integer)
+          union all
+          select
+            cast(1 as integer), cast('ride_snapshot' as varchar), cast('0.1.0' as varchar), cast('kpark1' as varchar), cast('s1' as varchar),
+            cast(4 as bigint), cast('s1-4' as varchar), cast(4 as integer), cast(5 as integer), cast(6 as integer),
+            cast(1004 as bigint), cast('2026-09-30 23:10:00+00' as timestamptz), cast('2026-09-30 23:30:04+00' as timestamptz), cast('a.jsonl' as varchar), cast(30 as bigint),
+            cast(14 as integer), cast('line two loser' as varchar), cast(12 as integer), cast('rct2.ride.burgb' as varchar), cast('ride' as varchar),
+            cast('open' as varchar), cast(652 as integer), cast(453 as integer), cast(304 as integer), cast(1250 as bigint),
+            cast(350 as bigint), cast(21 as integer), cast(22 as integer), cast(5000 as bigint), cast(31 as integer),
+            cast(32 as integer), cast(1234 as bigint), cast(7777 as bigint), cast(888 as bigint), cast(666 as bigint),
+            cast(9999 as bigint), cast(83 as integer), cast(14 as integer), cast(75 as integer), cast(41 as integer),
+            cast(2 as integer), cast(9 as integer)
+          union all
+          select
+            cast(1 as integer), cast('ride_snapshot' as varchar), cast('0.1.0' as varchar), cast('kpark1' as varchar), cast('s1' as varchar),
+            cast(5 as bigint), cast('s1-5' as varchar), cast(4 as integer), cast(5 as integer), cast(6 as integer),
+            cast(1005 as bigint), cast('2026-09-30 23:10:00+00' as timestamptz), cast('2026-09-30 23:30:05+00' as timestamptz), cast('a.jsonl' as varchar), cast(30 as bigint),
+            cast(15 as integer), cast('line thirty loser' as varchar), cast(12 as integer), cast('rct2.ride.burgb' as varchar), cast('ride' as varchar),
+            cast('open' as varchar), cast(652 as integer), cast(453 as integer), cast(304 as integer), cast(1250 as bigint),
+            cast(350 as bigint), cast(21 as integer), cast(22 as integer), cast(5000 as bigint), cast(31 as integer),
+            cast(32 as integer), cast(1234 as bigint), cast(7777 as bigint), cast(888 as bigint), cast(666 as bigint),
+            cast(9999 as bigint), cast(83 as integer), cast(14 as integer), cast(75 as integer), cast(41 as integer),
+            cast(2 as integer), cast(9 as integer)
+          union all
+          select
+            cast(1 as integer), cast('ride_snapshot' as varchar), cast('0.1.0' as varchar), cast('kpark1' as varchar), cast('s1' as varchar),
+            cast(5 as bigint), cast('s1-5' as varchar), cast(4 as integer), cast(5 as integer), cast(6 as integer),
+            cast(1005 as bigint), cast('2026-09-30 23:50:00+00' as timestamptz), cast('2026-09-30 23:30:05+00' as timestamptz), cast('a.jsonl' as varchar), cast(2 as bigint),
+            cast(15 as integer), cast('line thirty first' as varchar), cast(12 as integer), cast('rct2.ride.burgb' as varchar), cast('ride' as varchar),
+            cast('open' as varchar), cast(652 as integer), cast(453 as integer), cast(304 as integer), cast(1250 as bigint),
+            cast(350 as bigint), cast(21 as integer), cast(22 as integer), cast(5000 as bigint), cast(31 as integer),
+            cast(32 as integer), cast(1234 as bigint), cast(7777 as bigint), cast(888 as bigint), cast(666 as bigint),
+            cast(9999 as bigint), cast(83 as integer), cast(14 as integer), cast(75 as integer), cast(41 as integer),
+            cast(2 as integer), cast(9 as integer)
+          union all
+          select
+            cast(1 as integer), cast('ride_snapshot' as varchar), cast('0.1.0' as varchar), cast('kpark1' as varchar), cast('s1' as varchar),
+            cast(6 as bigint), cast('s1-6' as varchar), cast(4 as integer), cast(5 as integer), cast(6 as integer),
+            cast(1006 as bigint), cast('2026-09-30 23:50:00+00' as timestamptz), cast('2026-09-30 23:30:06+00' as timestamptz), cast('z.jsonl' as varchar), cast(2 as bigint),
+            cast(16 as integer), cast('second file lower' as varchar), cast(12 as integer), cast('rct2.ride.burgb' as varchar), cast('ride' as varchar),
+            cast('open' as varchar), cast(652 as integer), cast(453 as integer), cast(304 as integer), cast(1250 as bigint),
+            cast(350 as bigint), cast(21 as integer), cast(22 as integer), cast(5000 as bigint), cast(31 as integer),
+            cast(32 as integer), cast(1234 as bigint), cast(7777 as bigint), cast(888 as bigint), cast(666 as bigint),
+            cast(9999 as bigint), cast(83 as integer), cast(14 as integer), cast(75 as integer), cast(41 as integer),
+            cast(2 as integer), cast(9 as integer)
+          union all
+          select
+            cast(1 as integer), cast('ride_snapshot' as varchar), cast('0.1.0' as varchar), cast('kpark1' as varchar), cast('s1' as varchar),
+            cast(6 as bigint), cast('s1-6' as varchar), cast(4 as integer), cast(5 as integer), cast(6 as integer),
+            cast(1006 as bigint), cast('2026-09-30 23:10:00+00' as timestamptz), cast('2026-09-30 23:30:06+00' as timestamptz), cast('z.jsonl' as varchar), cast(30 as bigint),
+            cast(16 as integer), cast('second file lower loser' as varchar), cast(12 as integer), cast('rct2.ride.burgb' as varchar), cast('ride' as varchar),
+            cast('open' as varchar), cast(652 as integer), cast(453 as integer), cast(304 as integer), cast(1250 as bigint),
+            cast(350 as bigint), cast(21 as integer), cast(22 as integer), cast(5000 as bigint), cast(31 as integer),
+            cast(32 as integer), cast(1234 as bigint), cast(7777 as bigint), cast(888 as bigint), cast(666 as bigint),
+            cast(9999 as bigint), cast(83 as integer), cast(14 as integer), cast(75 as integer), cast(41 as integer),
+            cast(2 as integer), cast(9 as integer)
+          union all
+          select
+            cast(1 as integer), cast('ride_snapshot' as varchar), cast('0.1.0' as varchar), cast('kpark1' as varchar), cast('s1' as varchar),
+            cast(10 as bigint), cast('s1-10' as varchar), cast(4 as integer), cast(5 as integer), cast(6 as integer),
+            cast(1010 as bigint), cast('2026-09-30 23:10:00+00' as timestamptz), cast('2026-09-30 23:30:10+00' as timestamptz), cast('a.jsonl' as varchar), cast(9 as bigint),
+            cast(20 as integer), cast('s1-10 loser' as varchar), cast(12 as integer), cast('rct2.ride.burgb' as varchar), cast('ride' as varchar),
+            cast('open' as varchar), cast(652 as integer), cast(453 as integer), cast(304 as integer), cast(1250 as bigint),
+            cast(350 as bigint), cast(21 as integer), cast(22 as integer), cast(5000 as bigint), cast(31 as integer),
+            cast(32 as integer), cast(1234 as bigint), cast(7777 as bigint), cast(888 as bigint), cast(666 as bigint),
+            cast(1111 as bigint), cast(83 as integer), cast(14 as integer), cast(75 as integer), cast(41 as integer),
+            cast(2 as integer), cast(9 as integer)
+          union all
+          select
+            cast(1 as integer), cast('ride_snapshot' as varchar), cast('0.1.0' as varchar), cast('kpark1' as varchar), cast('s1' as varchar),
+            cast(10 as bigint), cast('s1-10' as varchar), cast(4 as integer), cast(5 as integer), cast(6 as integer),
+            cast(1010 as bigint), cast('2026-09-30 23:50:00+00' as timestamptz), cast('2026-09-30 23:30:10+00' as timestamptz), cast('a.jsonl' as varchar), cast(2 as bigint),
+            cast(20 as integer), cast('s1-10 winner' as varchar), cast(12 as integer), cast('rct2.ride.burgb' as varchar), cast('ride' as varchar),
+            cast('open' as varchar), cast(652 as integer), cast(453 as integer), cast(304 as integer), cast(1250 as bigint),
+            cast(350 as bigint), cast(21 as integer), cast(22 as integer), cast(5000 as bigint), cast(31 as integer),
+            cast(32 as integer), cast(1234 as bigint), cast(7777 as bigint), cast(888 as bigint), cast(666 as bigint),
+            cast(1010 as bigint), cast(83 as integer), cast(14 as integer), cast(75 as integer), cast(41 as integer),
+            cast(2 as integer), cast(9 as integer)
+          union all
+          select
+            cast(1 as integer), cast('ride_snapshot' as varchar), cast('0.1.0' as varchar), cast('kpark1' as varchar), cast('s1' as varchar),
+            cast(11 as bigint), cast('s1-11' as varchar), cast(4 as integer), cast(5 as integer), cast(6 as integer),
+            cast(1011 as bigint), cast('2026-09-30 23:50:00+00' as timestamptz), cast('2026-09-30 23:30:11+00' as timestamptz), cast('a.jsonl' as varchar), cast(2 as bigint),
+            cast(21 as integer), cast('s1-11 winner' as varchar), cast(12 as integer), cast('rct2.ride.burgb' as varchar), cast('ride' as varchar),
+            cast('open' as varchar), cast(652 as integer), cast(453 as integer), cast(304 as integer), cast(1250 as bigint),
+            cast(350 as bigint), cast(21 as integer), cast(22 as integer), cast(5000 as bigint), cast(31 as integer),
+            cast(32 as integer), cast(1234 as bigint), cast(7777 as bigint), cast(888 as bigint), cast(666 as bigint),
+            cast(1011 as bigint), cast(83 as integer), cast(14 as integer), cast(75 as integer), cast(41 as integer),
+            cast(2 as integer), cast(9 as integer)
+          union all
+          select
+            cast(1 as integer), cast('ride_snapshot' as varchar), cast('0.1.0' as varchar), cast('kpark1' as varchar), cast('s1' as varchar),
+            cast(11 as bigint), cast('s1-11' as varchar), cast(4 as integer), cast(5 as integer), cast(6 as integer),
+            cast(1011 as bigint), cast('2026-09-30 23:10:00+00' as timestamptz), cast('2026-09-30 23:30:11+00' as timestamptz), cast('a.jsonl' as varchar), cast(9 as bigint),
+            cast(21 as integer), cast('s1-11 loser' as varchar), cast(12 as integer), cast('rct2.ride.burgb' as varchar), cast('ride' as varchar),
+            cast('open' as varchar), cast(652 as integer), cast(453 as integer), cast(304 as integer), cast(1250 as bigint),
+            cast(350 as bigint), cast(21 as integer), cast(22 as integer), cast(5000 as bigint), cast(31 as integer),
+            cast(32 as integer), cast(1234 as bigint), cast(7777 as bigint), cast(888 as bigint), cast(666 as bigint),
+            cast(1112 as bigint), cast(83 as integer), cast(14 as integer), cast(75 as integer), cast(41 as integer),
+            cast(2 as integer), cast(9 as integer)
+          union all
+          select
+            cast(1 as integer), cast('ride_snapshot' as varchar), cast('0.1.0' as varchar), cast('kpark1' as varchar), cast('s1' as varchar),
+            cast(12 as bigint), cast('s1-12' as varchar), cast(4 as integer), cast(5 as integer), cast(6 as integer),
+            cast(1012 as bigint), cast('2026-09-30 23:10:00+00' as timestamptz), cast('2026-09-30 23:30:12+00' as timestamptz), cast('b.jsonl' as varchar), cast(9 as bigint),
+            cast(22 as integer), cast('s1-12 loser' as varchar), cast(12 as integer), cast('rct2.ride.burgb' as varchar), cast('ride' as varchar),
+            cast('open' as varchar), cast(652 as integer), cast(453 as integer), cast(304 as integer), cast(1250 as bigint),
+            cast(350 as bigint), cast(21 as integer), cast(22 as integer), cast(5000 as bigint), cast(31 as integer),
+            cast(32 as integer), cast(1234 as bigint), cast(7777 as bigint), cast(888 as bigint), cast(666 as bigint),
+            cast(1113 as bigint), cast(83 as integer), cast(14 as integer), cast(75 as integer), cast(41 as integer),
+            cast(2 as integer), cast(9 as integer)
+          union all
+          select
+            cast(1 as integer), cast('ride_snapshot' as varchar), cast('0.1.0' as varchar), cast('kpark1' as varchar), cast('s1' as varchar),
+            cast(12 as bigint), cast('s1-12' as varchar), cast(4 as integer), cast(5 as integer), cast(6 as integer),
+            cast(1012 as bigint), cast('2026-09-30 23:50:00+00' as timestamptz), cast('2026-09-30 23:30:12+00' as timestamptz), cast('b.jsonl' as varchar), cast(2 as bigint),
+            cast(22 as integer), cast('s1-12 winner' as varchar), cast(12 as integer), cast('rct2.ride.burgb' as varchar), cast('ride' as varchar),
+            cast('open' as varchar), cast(652 as integer), cast(453 as integer), cast(304 as integer), cast(1250 as bigint),
+            cast(350 as bigint), cast(21 as integer), cast(22 as integer), cast(5000 as bigint), cast(31 as integer),
+            cast(32 as integer), cast(1234 as bigint), cast(7777 as bigint), cast(888 as bigint), cast(666 as bigint),
+            cast(1012 as bigint), cast(83 as integer), cast(14 as integer), cast(75 as integer), cast(41 as integer),
+            cast(2 as integer), cast(9 as integer)
+          union all
+          select
+            cast(1 as integer), cast('ride_snapshot' as varchar), cast('0.1.0' as varchar), cast('kpark1' as varchar), cast('s1' as varchar),
+            cast(13 as bigint), cast('s1-13' as varchar), cast(4 as integer), cast(5 as integer), cast(6 as integer),
+            cast(1013 as bigint), cast('2026-09-30 23:10:00+00' as timestamptz), cast('2026-09-30 23:30:13+00' as timestamptz), cast('a.jsonl' as varchar), cast(90 as bigint),
+            cast(23 as integer), cast('first received despite emitted_at' as varchar), cast(12 as integer), cast('rct2.ride.burgb' as varchar), cast('ride' as varchar),
+            cast('open' as varchar), cast(652 as integer), cast(453 as integer), cast(304 as integer), cast(1250 as bigint),
+            cast(350 as bigint), cast(21 as integer), cast(22 as integer), cast(5000 as bigint), cast(31 as integer),
+            cast(32 as integer), cast(1234 as bigint), cast(7777 as bigint), cast(888 as bigint), cast(666 as bigint),
+            cast(1013 as bigint), cast(83 as integer), cast(14 as integer), cast(75 as integer), cast(41 as integer),
+            cast(2 as integer), cast(9 as integer)
+          union all
+          select
+            cast(1 as integer), cast('ride_snapshot' as varchar), cast('0.1.0' as varchar), cast('kpark1' as varchar), cast('s1' as varchar),
+            cast(13 as bigint), cast('s1-13' as varchar), cast(4 as integer), cast(5 as integer), cast(6 as integer),
+            cast(1013 as bigint), cast('2026-09-30 23:50:00+00' as timestamptz), cast('2026-09-30 23:30:14+00' as timestamptz), cast('a.jsonl' as varchar), cast(2 as bigint),
+            cast(23 as integer), cast('later received copy' as varchar), cast(12 as integer), cast('rct2.ride.burgb' as varchar), cast('ride' as varchar),
+            cast('open' as varchar), cast(652 as integer), cast(453 as integer), cast(304 as integer), cast(1250 as bigint),
+            cast(350 as bigint), cast(21 as integer), cast(22 as integer), cast(5000 as bigint), cast(31 as integer),
+            cast(32 as integer), cast(1234 as bigint), cast(7777 as bigint), cast(888 as bigint), cast(666 as bigint),
+            cast(1013 as bigint), cast(83 as integer), cast(14 as integer), cast(75 as integer), cast(41 as integer),
+            cast(2 as integer), cast(9 as integer)
+    expect:
+      format: dict
+      rows:
+        - &ride_snapshot_common
+          schema_version: 1
+          event_type: ride_snapshot
+          plugin_version: 0.1.0
+          park_id: kpark1
+          session_id: s1
+          game_year: 4
+          game_month: 5
+          game_day: 6
+          ride_type: 12
+          ride_object: rct2.ride.burgb
+          classification: ride
+          status: open
+          excitement_hundredths: 652
+          intensity_hundredths: 453
+          nausea_hundredths: 304
+          price_1_usd: 125.0
+          price_2_usd: 35.0
+          shop_item: 21
+          shop_item_secondary: 22
+          total_customers: 5000
+          build_date_months_elapsed: 31
+          age_months: 32
+          running_cost_per_fortnight_usd: 123.4
+          total_profit_usd: 777.7
+          income_per_game_hour_usd: 88.8
+          profit_per_game_hour_usd: 66.6
+          value_tenths: 9999
+          reliability_pct: 83
+          downtime_pct: 14
+          satisfaction_pct: 75
+          guests_on_ride: 41
+          station_count: 2
+          queue_time_max_minutes: 9
+          seq: 1
+          event_id: s1-1
+          game_ticks_elapsed: 1001
+          emitted_at: "2026-09-30 23:40:00+00"
+          received_at: "2026-09-30 23:30:01+00"
+          _raw_file: z.jsonl
+          _raw_line: 90
+          ride_id: 7
+          ride_name: first received
+        - <<: *ride_snapshot_common
+          seq: 2
+          event_id: s1-2
+          game_ticks_elapsed: 1002
+          emitted_at: "2026-09-30 23:50:00+00"
+          received_at: "2026-09-30 23:30:01+00"
+          _raw_file: a.jsonl
+          _raw_line: 9
+          ride_id: 7
+          ride_name: earlier file
+        - <<: *ride_snapshot_common
+          seq: 3
+          event_id: s1-3
+          game_ticks_elapsed: 1003
+          emitted_at: "2026-09-30 23:50:00+00"
+          received_at: "2026-09-30 23:30:01+00"
+          _raw_file: a.jsonl
+          _raw_line: 3
+          ride_id: 7
+          ride_name: earlier line
+        - <<: *ride_snapshot_common
+          seq: 4
+          event_id: s1-4
+          game_ticks_elapsed: 1004
+          emitted_at: "2026-09-30 23:50:00+00"
+          received_at: "2026-09-30 23:30:04+00"
+          _raw_file: a.jsonl
+          _raw_line: 2
+          ride_id: 14
+          ride_name: line two first
+        - <<: *ride_snapshot_common
+          seq: 5
+          event_id: s1-5
+          game_ticks_elapsed: 1005
+          emitted_at: "2026-09-30 23:50:00+00"
+          received_at: "2026-09-30 23:30:05+00"
+          _raw_file: a.jsonl
+          _raw_line: 2
+          ride_id: 15
+          ride_name: line thirty first
+        - <<: *ride_snapshot_common
+          seq: 6
+          event_id: s1-6
+          game_ticks_elapsed: 1006
+          emitted_at: "2026-09-30 23:50:00+00"
+          received_at: "2026-09-30 23:30:06+00"
+          _raw_file: z.jsonl
+          _raw_line: 2
+          ride_id: 16
+          ride_name: second file lower
+        - <<: *ride_snapshot_common
+          seq: 10
+          event_id: s1-10
+          game_ticks_elapsed: 1010
+          emitted_at: "2026-09-30 23:50:00+00"
+          received_at: "2026-09-30 23:30:10+00"
+          _raw_file: a.jsonl
+          _raw_line: 2
+          ride_id: 20
+          ride_name: s1-10 winner
+          value_tenths: 1010
+        - <<: *ride_snapshot_common
+          seq: 11
+          event_id: s1-11
+          game_ticks_elapsed: 1011
+          emitted_at: "2026-09-30 23:50:00+00"
+          received_at: "2026-09-30 23:30:11+00"
+          _raw_file: a.jsonl
+          _raw_line: 2
+          ride_id: 21
+          ride_name: s1-11 winner
+          value_tenths: 1011
+        - <<: *ride_snapshot_common
+          seq: 12
+          event_id: s1-12
+          game_ticks_elapsed: 1012
+          emitted_at: "2026-09-30 23:50:00+00"
+          received_at: "2026-09-30 23:30:12+00"
+          _raw_file: b.jsonl
+          _raw_line: 2
+          ride_id: 22
+          ride_name: s1-12 winner
+          value_tenths: 1012
+        - <<: *ride_snapshot_common
+          seq: 13
+          event_id: s1-13
+          game_ticks_elapsed: 1013
+          emitted_at: "2026-09-30 23:10:00+00"
+          received_at: "2026-09-30 23:30:13+00"
+          _raw_file: a.jsonl
+          _raw_line: 90
+          ride_id: 23
+          ride_name: first received despite emitted_at
+          value_tenths: 1013
+  - name: stg_ride_snapshot_nulls_each_placeholder_only_in_its_own_columns
+    description: >-
+      Each placeholder the contract names becomes null in its own column and nowhere else: -1 in the
+      excitement, intensity and nausea ratings, 1,275 in satisfaction and 255 in shop_item and
+      shop_item_secondary. Each row puts one placeholder next to an ordinary value in the neighbouring
+      column of the same kind (254, 0 and 1,274 stay), and each placeholder sits in a different column
+      per row, so nulling the wrong column, or skipping one, fails. Values that look like a placeholder
+      in another column (ride_type 255, guests_on_ride 1,275, total_profit -1 tenths) pass through.
+    model: stg_ride_snapshot
+    given:
+      - input: source('landing', 'ride_snapshot')
+        format: sql
+        rows: |
+          select
+            cast(1 as integer) as schema_version,
+            cast('ride_snapshot' as varchar) as event_type,
+            cast('0.1.0' as varchar) as plugin_version,
+            cast('kpark1' as varchar) as park_id,
+            cast('s1' as varchar) as session_id,
+            cast(4 as bigint) as seq,
+            cast('s1-4' as varchar) as event_id,
+            cast(4 as integer) as game_year,
+            cast(5 as integer) as game_month,
+            cast(6 as integer) as game_day,
+            cast(1004 as bigint) as game_ticks_elapsed,
+            cast('2026-09-30 23:30:00+00' as timestamptz) as emitted_at,
+            cast('2026-09-30 23:30:01+00' as timestamptz) as received_at,
+            cast('a.jsonl' as varchar) as _raw_file,
+            cast(11 as bigint) as _raw_line,
+            cast(7 as integer) as ride_id,
+            cast('Ride 7' as varchar) as ride_name,
+            cast(255 as integer) as ride_type,
+            cast('rct2.ride.burgb' as varchar) as ride_object,
+            cast('ride' as varchar) as classification,
+            cast('open' as varchar) as status,
+            cast(-1 as integer) as excitement_hundredths,
+            cast(0 as integer) as intensity_hundredths,
+            cast(304 as integer) as nausea_hundredths,
+            cast(1250 as bigint) as price_1_tenths,
+            cast(350 as bigint) as price_2_tenths,
+            cast(254 as integer) as shop_item,
+            cast(255 as integer) as shop_item_secondary,
+            cast(5000 as bigint) as total_customers,
+            cast(31 as integer) as build_date_months_elapsed,
+            cast(32 as integer) as age_months,
+            cast(1234 as bigint) as running_cost_per_fortnight_tenths,
+            cast(-1 as bigint) as total_profit_tenths,
+            cast(888 as bigint) as income_per_game_hour_tenths,
+            cast(666 as bigint) as profit_per_game_hour_tenths,
+            cast(9999 as bigint) as value_tenths,
+            cast(83 as integer) as reliability_pct,
+            cast(14 as integer) as downtime_pct,
+            cast(1274 as integer) as satisfaction_pct,
+            cast(1275 as integer) as guests_on_ride,
+            cast(2 as integer) as station_count,
+            cast(9 as integer) as queue_time_max_minutes
+          union all
+          select
+            cast(1 as integer), cast('ride_snapshot' as varchar), cast('0.1.0' as varchar), cast('kpark1' as varchar), cast('s1' as varchar),
+            cast(5 as bigint), cast('s1-5' as varchar), cast(4 as integer), cast(5 as integer), cast(6 as integer),
+            cast(1005 as bigint), cast('2026-09-30 23:30:00+00' as timestamptz), cast('2026-09-30 23:30:01+00' as timestamptz), cast('a.jsonl' as varchar), cast(11 as bigint),
+            cast(7 as integer), cast('Ride 7' as varchar), cast(12 as integer), cast('rct2.ride.burgb' as varchar), cast('ride' as varchar),
+            cast('open' as varchar), cast(653 as integer), cast(-1 as integer), cast(0 as integer), cast(1250 as bigint),
+            cast(350 as bigint), cast(255 as integer), cast(254 as integer), cast(5000 as bigint), cast(31 as integer),
+            cast(32 as integer), cast(1234 as bigint), cast(7777 as bigint), cast(888 as bigint), cast(666 as bigint),
+            cast(9999 as bigint), cast(83 as integer), cast(14 as integer), cast(1275 as integer), cast(41 as integer),
+            cast(2 as integer), cast(9 as integer)
+          union all
+          select
+            cast(1 as integer), cast('ride_snapshot' as varchar), cast('0.1.0' as varchar), cast('kpark1' as varchar), cast('s1' as varchar),
+            cast(6 as bigint), cast('s1-6' as varchar), cast(4 as integer), cast(5 as integer), cast(6 as integer),
+            cast(1006 as bigint), cast('2026-09-30 23:30:00+00' as timestamptz), cast('2026-09-30 23:30:01+00' as timestamptz), cast('a.jsonl' as varchar), cast(11 as bigint),
+            cast(7 as integer), cast('Ride 7' as varchar), cast(12 as integer), cast('rct2.ride.burgb' as varchar), cast('ride' as varchar),
+            cast('open' as varchar), cast(0 as integer), cast(654 as integer), cast(-1 as integer), cast(1250 as bigint),
+            cast(350 as bigint), cast(0 as integer), cast(1 as integer), cast(5000 as bigint), cast(31 as integer),
+            cast(32 as integer), cast(1234 as bigint), cast(7777 as bigint), cast(888 as bigint), cast(666 as bigint),
+            cast(9999 as bigint), cast(83 as integer), cast(14 as integer), cast(0 as integer), cast(41 as integer),
+            cast(2 as integer), cast(9 as integer)
+    expect:
+      format: dict
+      rows:
+        - {event_id: s1-4, excitement_hundredths: null, intensity_hundredths: 0, nausea_hundredths: 304, shop_item: 254, shop_item_secondary: null, satisfaction_pct: 1274, ride_type: 255, guests_on_ride: 1275, total_profit_usd: -0.10}
+        - {event_id: s1-5, excitement_hundredths: 653, intensity_hundredths: null, nausea_hundredths: 0, shop_item: null, shop_item_secondary: 254, satisfaction_pct: null, ride_type: 12, guests_on_ride: 41, total_profit_usd: 777.70}
+        - {event_id: s1-6, excitement_hundredths: 0, intensity_hundredths: 654, nausea_hundredths: null, shop_item: 0, shop_item_secondary: 1, satisfaction_pct: 0, ride_type: 12, guests_on_ride: 41, total_profit_usd: 777.70}
+  - name: stg_ride_snapshot_converts_money_and_passes_value_tenths_through_raw
+    description: >-
+      The six money columns convert from tenths of a dollar to dollars once, keeping two decimals, and
+      value_tenths keeps its name and its raw number, because its unit is unverified. Each money column
+      has its own distinct value where present, so swapping two of them or dropping the x0.1 on one fails; the
+      first row checks a null price_1, and the second checks a null total_profit, a negative profit per
+      game hour and a value_tenths above 2^53 that a double cannot hold. The complete output row is
+      asserted so every column's value and type is covered.
+    model: stg_ride_snapshot
+    given:
+      - input: source('landing', 'ride_snapshot')
+        format: sql
+        rows: |
+          select
+            cast(1 as integer) as schema_version,
+            cast('ride_snapshot' as varchar) as event_type,
+            cast('0.1.0' as varchar) as plugin_version,
+            cast('kpark1' as varchar) as park_id,
+            cast('s1' as varchar) as session_id,
+            cast(7 as bigint) as seq,
+            cast('s1-7' as varchar) as event_id,
+            cast(4 as integer) as game_year,
+            cast(5 as integer) as game_month,
+            cast(6 as integer) as game_day,
+            cast(1007 as bigint) as game_ticks_elapsed,
+            cast('2026-09-30 23:30:00+00' as timestamptz) as emitted_at,
+            cast('2026-09-30 23:30:01+00' as timestamptz) as received_at,
+            cast('a.jsonl' as varchar) as _raw_file,
+            cast(11 as bigint) as _raw_line,
+            cast(7 as integer) as ride_id,
+            cast('Ride 7' as varchar) as ride_name,
+            cast(12 as integer) as ride_type,
+            cast('rct2.ride.burgb' as varchar) as ride_object,
+            cast('ride' as varchar) as classification,
+            cast('open' as varchar) as status,
+            cast(652 as integer) as excitement_hundredths,
+            cast(453 as integer) as intensity_hundredths,
+            cast(304 as integer) as nausea_hundredths,
+            cast(null as bigint) as price_1_tenths,
+            cast(350 as bigint) as price_2_tenths,
+            cast(21 as integer) as shop_item,
+            cast(22 as integer) as shop_item_secondary,
+            cast(5000 as bigint) as total_customers,
+            cast(31 as integer) as build_date_months_elapsed,
+            cast(32 as integer) as age_months,
+            cast(1234 as bigint) as running_cost_per_fortnight_tenths,
+            cast(7777 as bigint) as total_profit_tenths,
+            cast(888 as bigint) as income_per_game_hour_tenths,
+            cast(666 as bigint) as profit_per_game_hour_tenths,
+            cast(9999 as bigint) as value_tenths,
+            cast(83 as integer) as reliability_pct,
+            cast(14 as integer) as downtime_pct,
+            cast(75 as integer) as satisfaction_pct,
+            cast(41 as integer) as guests_on_ride,
+            cast(2 as integer) as station_count,
+            cast(9 as integer) as queue_time_max_minutes
+          union all
+          select
+            cast(1 as integer), cast('ride_snapshot' as varchar), cast('0.1.0' as varchar), cast('kpark1' as varchar), cast('s1' as varchar),
+            cast(8 as bigint), cast('s1-8' as varchar), cast(4 as integer), cast(5 as integer), cast(6 as integer),
+            cast(1008 as bigint), cast('2026-09-30 23:30:00+00' as timestamptz), cast('2026-09-30 23:30:01+00' as timestamptz), cast('a.jsonl' as varchar), cast(11 as bigint),
+            cast(7 as integer), cast('Ride 7' as varchar), cast(12 as integer), cast('rct2.ride.burgb' as varchar), cast('ride' as varchar),
+            cast('open' as varchar), cast(652 as integer), cast(453 as integer), cast(304 as integer), cast(1250 as bigint),
+            cast(350 as bigint), cast(21 as integer), cast(22 as integer), cast(5000 as bigint), cast(31 as integer),
+            cast(32 as integer), cast(1234 as bigint), cast(null as bigint), cast(888 as bigint), cast(-4 as bigint),
+            cast(9007199254740993 as bigint), cast(83 as integer), cast(14 as integer), cast(75 as integer), cast(41 as integer),
+            cast(2 as integer), cast(10 as integer)
+    expect:
+      format: dict
+      rows:
+        - {schema_version: 1, event_type: ride_snapshot, plugin_version: '0.1.0', park_id: kpark1, session_id: s1, seq: 7, event_id: s1-7, game_year: 4, game_month: 5, game_day: 6, game_ticks_elapsed: 1007, emitted_at: '2026-09-30 23:30:00+00', received_at: '2026-09-30 23:30:01+00', _raw_file: a.jsonl, _raw_line: 11, ride_id: 7, ride_name: 'Ride 7', ride_type: 12, ride_object: rct2.ride.burgb, classification: ride, status: open, excitement_hundredths: 652, intensity_hundredths: 453, nausea_hundredths: 304, price_1_usd: null, price_2_usd: 35.00, shop_item: 21, shop_item_secondary: 22, total_customers: 5000, build_date_months_elapsed: 31, age_months: 32, running_cost_per_fortnight_usd: 123.40, total_profit_usd: 777.70, income_per_game_hour_usd: 88.80, profit_per_game_hour_usd: 66.60, value_tenths: 9999, reliability_pct: 83, downtime_pct: 14, satisfaction_pct: 75, guests_on_ride: 41, station_count: 2, queue_time_max_minutes: 9}
+        - {schema_version: 1, event_type: ride_snapshot, plugin_version: '0.1.0', park_id: kpark1, session_id: s1, seq: 8, event_id: s1-8, game_year: 4, game_month: 5, game_day: 6, game_ticks_elapsed: 1008, emitted_at: '2026-09-30 23:30:00+00', received_at: '2026-09-30 23:30:01+00', _raw_file: a.jsonl, _raw_line: 11, ride_id: 7, ride_name: 'Ride 7', ride_type: 12, ride_object: rct2.ride.burgb, classification: ride, status: open, excitement_hundredths: 652, intensity_hundredths: 453, nausea_hundredths: 304, price_1_usd: 125.00, price_2_usd: 35.00, shop_item: 21, shop_item_secondary: 22, total_customers: 5000, build_date_months_elapsed: 31, age_months: 32, running_cost_per_fortnight_usd: 123.40, total_profit_usd: null, income_per_game_hour_usd: 88.80, profit_per_game_hour_usd: -0.40, value_tenths: 9007199254740993, reliability_pct: 83, downtime_pct: 14, satisfaction_pct: 75, guests_on_ride: 41, station_count: 2, queue_time_max_minutes: 10}

@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Company Report: Operations</title>
+<link rel="stylesheet" href="app.css">
+</head><body class="operations"><div class="report">
+<header class="title"><h1>Theme Park Company · Operations</h1><span id="asof"></span></header>
+<div class="canvas">
+ <aside class="slicers" aria-label="Filters">
+  <div class="v" id="parkBox"></div>
+  <div class="v"><h2>Company year</h2><div class="chips" id="yrs" role="group" aria-label="Company year"></div></div>
+  <div class="v"><h2>Month</h2><div class="chips" id="mos" role="group" aria-label="Month"></div></div>
+  <div class="v help"><b>Sort the same days three ways.</b> Each dot is one day of a park. Switch the grouping and the dots regroup: by weather, and by months since a marketing payment. <span class="note sample"></span></div>
+ </aside>
+ <main class="main">
+  <div class="v finding"><p id="finding" aria-live="polite"></p></div>
+  <div class="v wide">
+   <div class="h2row"><h2>Guest arrivals, one dot per day <small id="dotSub"></small></h2><span class="note" id="grpLabel" style="margin:0">Group the days</span>
+    <div class="seg" id="grp" role="group" aria-labelledby="grpLabel"><button type="button" data-g="time">Over time</button><button type="button" data-g="weather">By weather</button><button type="button" data-g="mkt">By months since marketing</button></div></div>
+   <svg id="dots" viewBox="0 0 1186 350" role="img" aria-labelledby="dotDesc"><desc id="dotDesc"></desc></svg>
+  </div>
+  <div class="v">
+   <h2>Ride availability by month <small>and the longest queue seen in the chosen period</small></h2>
+   <svg id="matrix" viewBox="0 0 756 244" role="img" aria-label="Availability of each ride by month, with the longest queue seen"></svg>
+  </div>
+  <div class="v">
+   <h2>What age does to a ride <small>all rides, every open day</small></h2>
+   <svg id="age" viewBox="0 0 396 244" role="img" aria-labelledby="ageDesc"><desc id="ageDesc"></desc></svg>
+  </div>
+ </main>
+</div>
+<nav class="tabs" aria-label="Report pages"></nav>
+</div>
+<script src="data.js"></script>
+<script src="shared.js"></script>
+<script src="operations.js"></script>
+</body></html>

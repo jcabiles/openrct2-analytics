@@ -1,0 +1,105 @@
+{%- from "figure.njk" import figure as region -%}
+<header class="hero col" id="top">
+  <div class="ticket">
+    <div class="hero-ticket">
+      <div class="hero-main">
+        <p class="hero-kick"><span>openrct2-analytics</span>{{ region("company-years" | figure(exports), "span", "span") }}</p>
+        <h1>{% passage "the-game.md", "hero-title", "inline" %}</h1>
+        <p class="lead">{% passage "the-game.md", "hero-lead", "inline" %}</p>
+      </div>
+      <aside class="hero-stub" aria-label="The platform">
+        <p class="stub-h">The platform</p>
+        {{ region("platform" | figure(exports), "div", "p", "stub-sent") }}
+        <p class="serial">No. 2000 0301</p>
+      </aside>
+    </div>
+    <figure class="hero-scene">
+      <svg class="scene" id="scene" viewBox="250 128 1210 378" preserveAspectRatio="xMidYMax slice" role="img" aria-labelledby="scene-t scene-d">
+        <title id="scene-t">{% passage "the-game.md", "scene-title", "text" %}</title>
+        <desc id="scene-d">{% passage "the-game.md", "scene-desc", "text" %}</desc>
+        <defs><clipPath id="scene-clip"><rect x="0" y="-60" width="1500" height="620"/></clipPath></defs>
+            <g clip-path="url(#scene-clip)">
+              <path class="s-hill-near" d="M0 404 C 160 384 300 394 460 402 S 760 380 900 396 S 1200 384 1500 400 L1500 440 L0 440 Z"/>
+              <g class="s-tree">
+                <circle cx="560" cy="394" r="15"/><rect x="558" y="394" width="4" height="20"/>
+                <circle cx="598" cy="400" r="11"/><rect x="596" y="400" width="4" height="16"/>
+              </g>
+              <rect class="s-turf" x="0" y="428" width="1500" height="24"/>
+              <rect class="s-path" x="0" y="452" width="1500" height="18"/>
+              <rect class="s-soil" x="0" y="470" width="1500" height="90"/>
+              <path class="s-soil-line" d="M0 486 C 200 482 420 490 640 484 S 1100 480 1500 488"/>
+              <rect class="s-shaft" x="658" y="452" width="14" height="108" rx="3"/>
+              <g id="sc-supports" class="s-timber" data-span="1166 1431"></g>
+              <path id="sc-track" class="s-track" d="M1060 404 L1140 404 C1152 404 1158 400 1163 391 L1226 186 C1234 160 1256 160 1264 186 L1300 380 C1306 402 1322 404 1330 394 L1352 300 C1360 268 1380 268 1388 300 L1404 368 C1412 396 1422 404 1434 404 L1446 404"/>
+              <path class="s-track-tie" d="M1163 391 L1226 186"/>
+              <g id="sc-train" data-at="1104 398"></g>
+              <rect class="s-bldg" x="1066" y="400" width="76" height="40"/>
+              <path class="s-bldg s-path-fill" d="M1060 402 L1104 384 L1148 402 Z"/>
+              <rect class="s-ink" x="1078" y="414" width="12" height="26" rx="2"/>
+              <g class="s-timber"><path d="M1212 352 V440 M1236 352 V440 M1260 352 V440 M1284 352 V440 M1308 356 V440 M1340 386 V440"/></g>
+              <path id="sc-flume" class="s-water" d="M1168 436 C1180 436 1186 428 1190 418 L1206 352 L1300 352 C1314 352 1320 358 1328 370 L1364 422 C1372 434 1384 438 1400 438 L1430 438"/>
+              <path class="s-water-hi" d="M1206 352 L1300 352 C1314 352 1320 358 1328 370 L1364 422"/>
+              <ellipse class="s-pool" cx="1404" cy="444" rx="36" ry="6"/>
+              <g id="sc-log" data-at="1176 430"></g>
+              <g id="sc-carousel" data-at="1005 420">
+                <rect class="s-ink" x="956" y="436" width="98" height="8" rx="2"/>
+                <path class="s-ink-line" d="M970 404 V436 M984 404 V436 M998 404 V436 M1012 404 V436 M1026 404 V436 M1040 404 V436"/>
+                <g id="sc-horses" class="s-ink"></g>
+                <path class="s-white" d="M954 404 L1005 366 L1056 404 Z"/>
+                <path class="s-awn-b" d="M954 404 L1005 366 L968 404 Z M982 404 L1005 366 L996 404 Z M1010 404 L1005 366 L1024 404 Z M1038 404 L1005 366 L1052 404 Z"/>
+                <path class="s-ink-line" d="M954 404 L1005 366 L1056 404 Z"/>
+                <path class="s-ink-line" d="M954 404 q7 7 14 0 q7 7 14 0 q7 7 14 0 q7 7 14 0 q7 7 14 0 q7 7 14 0 q7 7 14 0"/>
+                <path class="s-ink-line" d="M1005 366 V354"/><circle class="s-roof" cx="1005" cy="352" r="4"/>
+              </g>
+              <g>
+                <rect class="s-bldg" x="868" y="424" width="32" height="28"/>
+                <path class="s-awn-a" d="M864 412 h8 v12 h-8z M880 412 h8 v12 h-8z M896 412 h8 v12 h-8z"/>
+                <path class="s-white" d="M872 412 h8 v12 h-8z M888 412 h8 v12 h-8z"/>
+                <path class="s-ink-line" d="M864 412 h40 v12 h-40z"/>
+                <rect class="s-bldg" x="912" y="424" width="32" height="28"/>
+                <path class="s-awn-b" d="M908 412 h8 v12 h-8z M924 412 h8 v12 h-8z M940 412 h8 v12 h-8z"/>
+                <path class="s-white" d="M916 412 h8 v12 h-8z M932 412 h8 v12 h-8z"/>
+                <path class="s-ink-line" d="M908 412 h40 v12 h-40z"/>
+                <path class="s-ink-line s-thin" d="M920 410 L916 392 M928 410 L930 384 M936 410 L942 394"/>
+                <circle class="s-awn-b" cx="916" cy="388" r="6"/><circle class="s-awn-a" cx="930" cy="380" r="6"/><circle class="s-balloon" cx="942" cy="390" r="6"/>
+              </g>
+              <rect class="s-bldg" x="802" y="404" width="48" height="48"/>
+              <path class="s-bldg" d="M796 406 L826 384 L856 406 Z"/>
+              <rect class="s-ink" x="810" y="414" width="10" height="10" rx="1"/><rect class="s-ink" x="832" y="414" width="10" height="10" rx="1"/>
+              <rect class="s-ink" x="820" y="432" width="12" height="20" rx="1"/>
+              <path class="s-ink-line" d="M856 406 V364"/><path class="s-awn-b" d="M857 364 h16 l-5 6 l5 6 h-16z"/>
+              <rect class="s-bldg" x="706" y="374" width="12" height="80"/><rect class="s-bldg" x="772" y="374" width="12" height="80"/>
+              <path class="s-ink-line s-heavy" d="M706 378 Q745 342 784 378"/>
+              <rect class="s-sign" x="724" y="352" width="42" height="14" rx="3"/>
+              <path class="s-awn-a" d="M712 374 V360 l10 4 l-10 4"/><path class="s-awn-b" d="M778 374 V360 l10 4 l-10 4"/>
+              <rect class="s-bldg" x="648" y="416" width="34" height="36"/>
+              <path class="s-roof" d="M642 418 L665 400 L688 418 Z"/>
+              <path class="s-ink-line" d="M665 400 V356"/><circle class="s-roof" cx="665" cy="352" r="5"/>
+              <rect class="s-ink" x="658" y="430" width="14" height="10" rx="2"/>
+              <g id="sc-guests"></g>
+              <g id="sc-dots" data-snapshots="1245 170 1005 360 1250 352"></g>
+              <text class="s-label s-label-soil wide-only" x="665" y="494" text-anchor="middle">plugin <tspan class="sub">(ES5)</tspan></text>
+              <text class="s-label" x="745" y="312" text-anchor="middle">guest_arrived</text>
+              <text class="s-label wide-only" x="836" y="344" text-anchor="middle">finance_month <tspan class="sub">monthly</tspan></text>
+              <text class="s-label" x="1032" y="332" text-anchor="middle">ride_snapshot <tspan class="sub">daily</tspan></text>
+              <text class="s-label wide-only" x="1245" y="146" text-anchor="middle">guest_boarded</text>
+            </g>
+      </svg>
+      <button class="btn pause" type="button" data-motion-toggle><svg class="i" aria-hidden="true"><use href="#i-pause"/></svg><span>Pause motion</span></button>
+      <figcaption class="scene-cap">{% passage "the-game.md", "scene-caption", "inline" %}</figcaption>
+    </figure>
+    <div class="perf-x">
+      <span class="notch n-l" aria-hidden="true"></span><span class="notch n-r" aria-hidden="true"></span>
+      <div class="coupons-h"><b>{% passage "the-game.md", "nav-jump", "text" %}</b><span>{% passage "the-game.md", "nav-note", "inline" %}</span></div>
+      <nav aria-label="{% passage "the-game.md", "nav-jump", "text" %}"><ul class="coupons">
+        <li><a class="coupon" href="#enterprise" data-jump="enterprise"><span class="cn">01</span><span class="cl">{% passage "the-game.md", "nav-enterprise", "text" %}</span><span class="hole" aria-hidden="true"></span></a></li>
+        <li><a class="coupon" href="#extract" data-jump="extract"><span class="cn">02</span><span class="cl">{% passage "the-game.md", "nav-extract", "text" %}</span><span class="hole" aria-hidden="true"></span></a></li>
+        <li><a class="coupon" href="#infra" data-jump="infra"><span class="cn">03</span><span class="cl">{% passage "the-game.md", "nav-infra", "text" %}</span><span class="hole" aria-hidden="true"></span></a></li>
+        <li><a class="coupon" href="#built" data-jump="built"><span class="cn">04</span><span class="cl">{% passage "the-game.md", "nav-built", "text" %}</span><span class="hole" aria-hidden="true"></span></a></li>
+        <li><a class="coupon" href="#story" data-jump="story"><span class="cn">05</span><span class="cl">{% passage "the-game.md", "nav-story", "text" %}</span><span class="hole" aria-hidden="true"></span></a></li>
+        <li><a class="coupon ext" href="https://github.com/jcabiles/openrct2-analytics" rel="noopener noreferrer"><span class="cn">06</span><span class="cl">Repository</span><span class="hole" aria-hidden="true"></span></a></li>
+        <li><a class="coupon ext" href="https://github.com/jcabiles" rel="noopener noreferrer"><span class="cn">07</span><span class="cl">Author</span><span class="hole" aria-hidden="true"></span></a></li>
+      </ul></nav>
+    </div>
+  </div>
+</header>

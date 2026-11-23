@@ -1,0 +1,192 @@
+apiVersion: v3.2.0
+kind: DataContract
+id: game_action
+name: game_action
+version: 1.8.0
+status: active
+description:
+  purpose: One event per hook call of a kept business action (plugin 0.8.0 and later); rows from earlier plugins may also be labeled preview or prediction.
+servers:
+  - server: parquet_through_duckdb
+    type: duckdb
+    database: __DATABASE__
+    schema: main
+schema:
+  - name: game_action
+    physicalType: view
+    description: >-
+      One row per hook call of a kept action (and kept sub-type) that is not a preview, sent by plugin 0.8.0 and
+      later; the list of kept actions is plugin/src/action_names.ts. Plugin 0.7.0 sent every call of the game's
+      action.query or action.execute hook. The data
+      is Parquet (v1/game_action.parquet), checked through a throwaway DuckDB view. The hook copies its values into
+      a buffer and the work queue sends them oldest first, so the envelope's game date and game_ticks_elapsed are
+      the send time and can fall on a later day than the action; the action_ columns hold the hook's own clock.
+      The envelope's seq orders the rows, so there is no key of its own. An action called while the buffer was full
+      has no row; plugin_stats counts those drops per label, and counts the calls the plugin skips in its
+      game_actions_skipped_ fields. A session with no actions has no row.
+    properties:
+      - name: hook
+        logicalType: string
+        physicalType: VARCHAR
+        required: true
+        description: >-
+          Which action hook fired: query (the game asks whether an action would succeed) or execute (the game runs the
+          action); text, no unit. The plugin sends one row per hook call of a kept business action from plugin 0.8.0 on, so
+          one player action can give a query row and an execute row; rows from earlier plugins may be labeled
+          preview or prediction.
+      - name: action
+        logicalType: string
+        physicalType: VARCHAR
+        required: true
+        description: >-
+          The game's name for the action, for example ridesetprice, parksetloan or staffhire; text, no unit. This is
+          the kind that marts split by.
+      - name: action_label
+        logicalType: string
+        physicalType: VARCHAR
+        required: true
+        description: >-
+          The plugin's label for the call, derived from args_flags and is_client_only: preview when args_flags has bit
+          64 set (tested as a 32-bit and, so a negative flags value works), else prediction when is_client_only is
+          true, else confirmed. Bit 64 wins when both signals are set. Text, no unit. Both raw signals stay in their
+          own columns; the label alone does not say who issued the action (see player).
+      - name: args_flags
+        logicalType: integer
+        physicalType: BIGINT
+        required: false
+        description: >-
+          The integer flags value of the hook's arguments as received, a bit set with no unit; may be negative; null
+          when the arguments carry no numeric flags.
+      - name: is_client_only
+        logicalType: boolean
+        physicalType: BOOLEAN
+        required: true
+        description: >-
+          The hook's own isClientOnly value as received: true when the game ran the call only on the client, as a
+          prediction; true or false, no unit.
+      - name: player
+        logicalType: integer
+        physicalType: INTEGER
+        required: true
+        description: >-
+          The hook's player value, unchanged; a whole number, no unit. The plugin does not judge who issued an action.
+      - name: type
+        logicalType: integer
+        physicalType: INTEGER
+        required: false
+        description: >-
+          The hook's type value as received, a whole number with no unit; null when the hook gives none. It is kept
+          because raw values cannot be recovered later.
+      - name: args_json
+        logicalType: string
+        physicalType: VARCHAR
+        required: true
+        description: >-
+          The hook's arguments as JSON text, written inside the hook so later changes to the game's objects do not
+          alter it; text, no unit. The columns args_ride to args_z below repeat some of its values.
+      - name: args_ride
+        logicalType: integer
+        physicalType: INTEGER
+        required: false
+        description: >-
+          The ride number in the arguments, a whole number with no unit; null when the arguments carry none.
+      - name: args_ride_type
+        logicalType: integer
+        physicalType: INTEGER
+        required: false
+        description: >-
+          The ride type number in the arguments, a whole number with no unit; null when the arguments carry none.
+      - name: args_ride_object
+        logicalType: integer
+        physicalType: INTEGER
+        required: false
+        description: >-
+          The ride object number in the arguments, a whole number with no unit; null when the arguments carry none.
+      - name: args_price_tenths
+        logicalType: integer
+        physicalType: BIGINT
+        required: false
+        description: >-
+          The price in the arguments, in tenths of a dollar (game money unit); null when the arguments carry none.
+          Unverified: that the game gives prices in tenths.
+      - name: args_x
+        logicalType: integer
+        physicalType: INTEGER
+        required: false
+        description: >-
+          The x coordinate in the arguments, in the action's own coordinate units; null when the arguments carry none.
+      - name: args_y
+        logicalType: integer
+        physicalType: INTEGER
+        required: false
+        description: >-
+          The y coordinate in the arguments, in the action's own coordinate units; null when the arguments carry none.
+      - name: args_z
+        logicalType: integer
+        physicalType: INTEGER
+        required: false
+        description: >-
+          The z coordinate in the arguments, in the action's own coordinate units; null when the arguments carry none.
+      - name: result_error
+        logicalType: integer
+        physicalType: INTEGER
+        required: false
+        description: >-
+          The result's error code as received, a whole number with no unit; null when the result carries none (the
+          game's result type makes it optional). Read null as no error: coalesce(result_error, 0) = 0.
+      - name: result_cost_tenths
+        logicalType: integer
+        physicalType: BIGINT
+        required: false
+        description: >-
+          The result's cost, in tenths of a dollar (game money unit); null when the result carries none. Unverified:
+          that the game gives costs in tenths.
+      - name: result_ride
+        logicalType: integer
+        physicalType: INTEGER
+        required: false
+        description: >-
+          The ride number the result returns, which a ridecreate action sets (only in rows from plugins before 0.8.0); a whole number with no unit; null when
+          the result carries none.
+      - name: action_at_ticks
+        logicalType: integer
+        physicalType: BIGINT
+        required: true
+        logicalTypeOptions:
+          minimum: 0
+        description: >-
+          Game tick at which the hook fired, in game ticks (game clock). Not the envelope's game_ticks_elapsed, which
+          is the tick the event was built and can fall on a later day.
+      - name: action_game_year
+        logicalType: integer
+        physicalType: INTEGER
+        required: true
+        description: >-
+          In-game year read inside the hook, from 1 (game calendar clock). Use the action_ date columns for an
+          action's date; the envelope's game date is the send date.
+      - name: action_game_month
+        logicalType: integer
+        physicalType: INTEGER
+        required: true
+        logicalTypeOptions:
+          minimum: 0
+          maximum: 7
+        description: >-
+          In-game month read inside the hook, 0 to 7 (March = 0); game calendar clock.
+      - name: action_game_day
+        logicalType: integer
+        physicalType: INTEGER
+        required: true
+        logicalTypeOptions:
+          minimum: 1
+        description: >-
+          In-game day of the month read inside the hook, from 1 (game calendar clock).
+    quality:
+      - type: sql
+        description: the hook is query or execute
+        query: SELECT COUNT(*) FROM {object} WHERE hook NOT IN ('query', 'execute')
+        mustBe: 0
+      - type: sql
+        description: the label is confirmed, preview or prediction
+        query: SELECT COUNT(*) FROM {object} WHERE action_label NOT IN ('confirmed', 'preview', 'prediction')
+        mustBe: 0

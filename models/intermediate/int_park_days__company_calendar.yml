@@ -1,0 +1,95 @@
+version: 2
+
+models:
+  - name: int_park_days__company_calendar
+    description: >-
+      Gives every valid game day of each mapped park-year its company date, so
+      an event can get its company date with one join. Grain: one row per park
+      and game day of a mapped park-year; key park_day_key, park_id joined with
+      game_year, game_month and game_day. Game day uses the game calendar;
+      company_year and company_date use the company date clock. The model has
+      no unit; clock: game day for its key and company date for company_date.
+      On the zero-row build the model is empty because there are no
+      mapped park-years.
+    meta:
+      expected_min_rows: 1
+    data_tests:
+      - unique:
+          column_name: park_day_key
+      - rows_on_sample:
+          arguments:
+            expected: 245
+    columns:
+      - name: park_day_key
+        description: "Park identifier and game date joined by pipes; text; no unit; clock: game day."
+        data_tests: [not_null]
+      - name: park_id
+        description: "The park's identifier, the same text the plugin sends; no unit; clock: game day."
+        data_tests: [not_null]
+      - name: game_year
+        description: "In-game year of the park-day; unit: year; clock: game day."
+        data_tests: [not_null]
+      - name: game_month
+        description: "In-game month numbered 0 to 7; unit: month; clock: game day."
+        data_tests: [not_null]
+      - name: game_day
+        description: "In-game day numbered 1 to 31; unit: day; clock: game day."
+        data_tests: [not_null]
+      - name: company_year
+        description: "Mapped company year for the park-day; unit: year; clock: company date."
+        data_tests: [not_null]
+      - name: company_date
+        description: "Company calendar date for the game day; unit: date; clock: company date."
+        data_tests: [not_null]
+
+unit_tests:
+  - name: int_park_days__company_calendar_maps_every_valid_day
+    description: >-
+      It proves that two mapped park-years produce every valid date from March
+      through October, while unmapped park-years produce no rows and impossible
+      dates such as 31 April are absent.
+    model: int_park_days__company_calendar
+    given:
+      - input: ref('int_park_years__registry_mapped')
+        format: sql
+        rows: |
+          select cast('park1' as varchar) as park_id, cast(9 as integer) as game_year, cast('mapped' as varchar) as mapping_status, cast(2000 as integer) as company_year
+          union all
+          select cast('park2' as varchar), cast(6 as integer), cast('mapped' as varchar), cast(2003 as integer)
+          union all
+          select cast('park1' as varchar), cast(8 as integer), cast('before_origin' as varchar), cast(null as integer)
+          union all
+          select cast('park3' as varchar), cast(1 as integer), cast('unregistered' as varchar), cast(null as integer)
+    expect:
+      format: sql
+      rows: |
+        with expected_dates as (
+            select
+                'park1' as park_id,
+                9 as game_year,
+                2000 as company_year,
+                cast(calendar_date as date) as company_date
+            from range(
+                date '2000-03-01', date '2000-11-01', interval 1 day
+            ) as calendar (calendar_date)
+            union all
+            select
+                'park2' as park_id,
+                6 as game_year,
+                2003 as company_year,
+                cast(calendar_date as date) as company_date
+            from range(
+                date '2003-03-01', date '2003-11-01', interval 1 day
+            ) as calendar (calendar_date)
+        )
+        select
+            park_id || '|' || game_year || '|' ||
+                (extract(month from company_date)::integer - 3) || '|' ||
+                extract(day from company_date)::integer as park_day_key,
+            park_id,
+            game_year,
+            extract(month from company_date)::integer - 3 as game_month,
+            extract(day from company_date)::integer as game_day,
+            company_year,
+            company_date
+        from expected_dates

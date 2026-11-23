@@ -1,0 +1,42 @@
+{%- set exports = { park: park.rows, park_month: park_month.rows, park_year: park_year.rows, company_year: company_year.rows, ride_month: ride_month.rows, ride_year: ride_year.rows, park_month_revenue: park_month_revenue.rows, sample: sample.rows } -%}
+<!doctype html>
+<html lang="en" data-palette="rct-exact" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="assets/favicon.svg">
+  <title>openrct2-analytics</title>
+  <link rel="stylesheet" href="assets/css/tokens.css">
+  <link rel="stylesheet" href="assets/css/base.css">
+  <link rel="stylesheet" href="assets/css/nav.css">
+  <link rel="stylesheet" href="assets/css/sections.css">
+  <link rel="stylesheet" href="assets/css/crew.css">
+  <link rel="stylesheet" href="assets/css/insights.css">
+  <link rel="stylesheet" href="assets/css/charts.css">
+  <link rel="stylesheet" href="assets/css/figure.css">
+</head>
+<body>
+{% include "icons.njk" %}
+<svg class="guilloche" id="guilloche" aria-hidden="true" focusable="false"></svg>
+<a class="skip" href="#main">{% passage "the-game.md", "skip-link", "text" %}</a>
+{% include "topbar.njk" %}
+<div class="page">
+{% include "hero.njk" %}
+<main id="main">
+{% include "enterprise.njk" %}
+{% include "extract.njk" %}
+{% include "infra.njk" %}
+{% include "built.njk" %}
+{% include "story.njk" %}
+{% include "insights.njk" %}
+</main>
+{% include "footer.njk" %}
+</div>
+<script type="application/json" id="park-data">{{ park.rows | dump | safe }}</script>
+<script type="application/json" id="park-month-data">{{ park_month.rows | dump | safe }}</script>
+<script src="assets/vendor/d3.min.js"></script>
+<script src="assets/vendor/plot.umd.min.js"></script>
+<script type="module" src="assets/park-month-chart.mjs"></script>
+<script type="module" src="assets/js/boot.mjs"></script>
+</body>
+</html>

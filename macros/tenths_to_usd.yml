@@ -1,0 +1,14 @@
+version: 2
+
+macros:
+  - name: tenths_to_usd
+    description: >
+      Converts a money amount in the game's tenths of a dollar to dollars as
+      decimal(18, 2). The only money conversion in the project; only staging
+      models call it. A null stays null.
+    arguments:
+      - name: column
+        type: string
+        description: >
+          The name of a `_tenths` column (or a SQL expression), as text, for
+          example `tenths_to_usd('cash_tenths')`.

@@ -1,0 +1,16 @@
+{#- The one figure-region form (R11): data-figure and its state, a unit line (in the heading when the
+    figure has one, else visually hidden) and a body. A pending body is exactly the pending text;
+    a live body is the caller's markup, or the registry's sentence when there is no caller.
+    A mountId adds a chart mount after the body, inside the region, so it is in every build (hidden
+    when pending) and the pending body stays exactly the pending text. -#}
+{% macro figure(f, tag="section", bodyTag="div", bodyClass="", mountId="") -%}
+<{{ tag }} class="fig" data-figure="{{ f.id }}" data-figure-state="{{ f.state }}">
+{%- if f.heading %}<h3>{{ f.heading }} <span class="unit" data-figure-unit>{{ f.unitLine }}</span></h3>
+{%- else %}<span class="vh" data-figure-unit>{{ f.unitLine }}</span>{% endif -%}
+{%- set bodyClasses = ((bodyClass + " ") if bodyClass else "") + ("fig-empty" + (" fig-empty-inline" if bodyTag == "span" else "") if f.state == "pending" else "") -%}
+<{{ bodyTag }}{% if bodyClasses | trim %} class="{{ bodyClasses | trim }}"{% endif %} data-figure-body>
+{%- if f.state == "pending" %}{{ f.pending }}{% elif caller %}{{ caller() }}{% else %}{{ f.sentence }}{% endif -%}
+</{{ bodyTag }}>
+{%- if mountId %}<div class="chart" id="{{ mountId }}"{% if f.state == "pending" %} hidden{% elif f.chartLabel %} role="img" aria-label="{{ f.chartLabel }}"{% endif %}></div>{% endif -%}
+</{{ tag }}>
+{%- endmacro %}

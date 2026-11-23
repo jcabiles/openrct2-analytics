@@ -1,0 +1,435 @@
+# The park company's metric catalog, admissions: guest visits, park rating, per-visit revenue and the year-over-year comparisons.
+# Part of the catalog in metrics/*.yml: the north star (operating profit per company year), its metric tree and its
+# guardrails, in dbt 1.11's semantic-model and metric YAML shape. Decisions: docs/adr/0016-dbt-design.md.
+# dbt never reads these files; a column no model's YAML has yet is listed under its semantic model's planned_columns.
+semantic_models:
+  - name: park_day
+    description: One park's daily snapshot, read at the start of the game day; one row per park per company day.
+    model: ref('fct_park_day')
+    defaults: {agg_time_dimension: company_date}
+    entities:
+      - {name: park_day, type: primary, expr: park_day_key}
+      - {name: park, type: foreign, expr: park_id}
+    dimensions:
+      - {name: company_date, type: time, type_params: {time_granularity: day}}
+      - {name: weather, type: categorical}
+      - {name: same_park_current_eligible, type: categorical}
+      - {name: same_park_prior_eligible, type: categorical}
+    measures:
+      - {name: visit_count, agg: sum, expr: admissions_increase}
+      - {name: park_rating_mean, agg: average, expr: park_rating}
+      - {name: kept_park_day_count, agg: count, expr: event_id}
+      - name: temperature_c_mean
+        agg: average
+        expr: temperature_c
+        description: >-
+          The park's temperature at the start of the game day, in degrees Celsius, averaged; numeric, not a
+          category, so weather analyses can read it as a number. No metric uses it until the weather spike holds.
+    config:
+      meta:
+        planned_metrics: >-
+          Weather and umbrella metrics (status draft once defined) depend on the weather and umbrella spike and the
+          weather capture it unlocks (roadmap NEXT 18, how weather drives stall sales); none is defined here until
+          the spike proves how weather changes are timed and umbrella sales are told apart from map sales.
+        row_rules:
+          - kept timeline only (ADR 0006)
+          - one row per park and game day; duplicate deliveries removed on event_id (roadmap NEXT 3a)
+          - one data set per build, rehearsal or company (ADR 0013)
+          - closed months (November to February) have no rows and never appear as zero days
+          - a reload's rewound admissions counter never counts as negative visits (roadmap NEXT 3b)
+        planned_columns:
+          - name: same_park_current_eligible
+            planned_by: roadmap NEXT 3b, intermediate layer, from NEXT 6's register (as in finance_month)
+          - name: same_park_prior_eligible
+            planned_by: roadmap NEXT 3b, intermediate layer, from NEXT 6's register (as in finance_month)
+
+metrics:
+  - name: guest_visits
+    label: Attendance (guest visits)
+    description: >-
+      Guests admitted to a park. Each guest is one visit, because guests never come back; counted, within one session, as the
+      rise in the game's running admissions total from one kept day's reading to the next kept reading of the same
+      session, and assigned to the earlier day. Each session's last kept day has no change (null), so visits between
+      a save and the next session are not counted.
+    type: simple
+    type_params: {measure: visit_count}
+    config:
+      meta:
+        unit: count
+        clock: company date
+        grain: per park per company day; reported per company month, per company year and for the company
+        owner: the project owner
+        status: draft
+        role: guardrail
+        source_models: [stg_park_snapshot]
+        tree:
+          parent: ride_revenue
+          link: hypothesis
+          claim: more guest visits bring more ride revenue, because every ride ticket is paid by a guest in the park
+          direction: positive
+          lag: same company day
+          evidence: >-
+            observational and untested: the pay-per-ride rule makes ride tickets the main way a visit turns into
+            money (roadmap "Business rules: the park company"); no day-grain comparison has run on captured data
+          rivals: [ride price changes, ride breakdowns and closures, weather]
+          review: each company year-end close
+          check: >-
+            read at the year-end close review (roadmap NEXT 6), per park per company day: ride_revenue_by_ride
+            summed over the park's rides against guest_visits the same day; observational, no tolerance. A monthly
+            association never satisfies it; a series lacking day grain relabels the claim to the grain it supports.
+          additional_links:
+            - parent: food_drink_revenue
+              link: hypothesis
+              claim: >-
+                more guest visits bring more food and drink revenue, because every stall sale is paid by a guest in
+                the park
+              direction: positive
+              lag: same company day
+              evidence: &visits_stall_evidence >-
+                observational and untested: guests who never return can spend only during their one visit (roadmap
+                "Business rules: the park company"); no day-grain comparison has run on captured data
+              rivals: [stall price changes, stall placement and closures, weather]
+              review: each company year-end close
+              check: >-
+                read at the year-end close review (roadmap NEXT 6), per park per company day:
+                food_drink_revenue_by_item summed over the park's food and drink stalls against guest_visits the
+                same day; observational, no tolerance. A monthly association never satisfies it; a series lacking
+                day grain relabels the claim to the grain it supports.
+            - parent: merchandise_revenue
+              link: hypothesis
+              claim: >-
+                more guest visits bring more merchandise revenue, because every shop and on-ride photo sale is paid
+                by a guest in the park
+              direction: positive
+              lag: same company day
+              evidence: *visits_stall_evidence
+              rivals: [stall and photo price changes, stall placement and closures, weather (umbrella sales)]
+              review: each company year-end close
+              check: >-
+                read at the year-end close review (roadmap NEXT 6), per park per company day:
+                merchandise_revenue_by_item summed over the park's shop stalls and on-ride photos against
+                guest_visits the same day; observational, no tolerance. A monthly association never satisfies it; a
+                series lacking day grain relabels the claim to the grain it supports.
+        guardrail_threshold:
+          reads: same_park_guest_visits_yoy for the completed company year, per park and for the eligible parks together
+          value: -0.02
+          unit: fraction of the prior year
+          direction: at least
+          rule: >-
+            when annual company operating_profit rises, same_park_guest_visits_yoy is at least -0.02, which equals
+            same-park guest visits of at least 98% of the prior year's for the identical eligible parks; shown
+            beside both years' operating days; a park without a complete prior year has no baseline, not an
+            automatic pass
+          basis: &threshold_basis >-
+            a project decision, not a published industry norm
+            (docs/ai-dlc/reports/park-metric-conventions--findings.md); confirmed by the project owner on 2026-10-03,
+            fixed before any result was seen, and revisited after two complete company years, never changed after
+            seeing the result it judges
+        excludes:
+          - a reload's rewound admissions counter
+          - abandoned-timeline rows
+          - rehearsal and company data in one figure
+        roadmap_source: "Gate 1 rulings of 2026-10-03; NEXT 5"
+
+  - name: average_park_rating
+    label: Game park rating (0–999)
+    description: >-
+      The game's park rating averaged over operating days. For the company, every park-day counts once, so a park
+      with more days weighs more.
+    type: simple
+    type_params: {measure: park_rating_mean}
+    config:
+      meta:
+        unit: engine units, 0 to 999
+        clock: company date
+        grain: per park per company day; reported per company month, per company year and for the company
+        owner: the project owner
+        status: draft
+        role: guardrail
+        source_models: [stg_park_snapshot]
+        tree:
+          parent: guest_visits
+          link: hypothesis
+          claim: a better park rating brings more guest visits
+          direction: positive
+          lag: 7, 14 or 28 company days; the best-fitting lag is recorded
+          evidence: >-
+            observational and untested for rating: roadmap NEXT 5 names park rating among the drivers of visits,
+            and its visitor-growth observation (the old capture suggested new rides, not ads, grew one pilot park)
+            is the only evidence on drivers so far
+          rivals: [new ride openings (the NEXT 5 observation), marketing campaigns, weather]
+          review: each company year-end close
+          check: >-
+            read at the year-end close review (roadmap NEXT 6), per park per company day: guest_visits on day d
+            against average_park_rating on day d minus 7, 14 or 28 days, recording the best-fitting lag;
+            observational, no tolerance. A monthly association never satisfies it; a series lacking day grain
+            relabels the claim to the grain it supports.
+        guardrail_threshold:
+          reads: >-
+            the change in average_park_rating from the prior company year to the completed one (current minus
+            prior), with each year restricted to the eligible parks of the same-park metrics
+            (same_park_current_eligible for the current year, same_park_prior_eligible for the prior year) and
+            every park-day weighted once, as average_park_rating pools them; per park and for the eligible parks
+            together
+          value: -10
+          unit: engine units, 0 to 999
+          direction: at least
+          rule: >-
+            when annual company operating_profit rises, that change is at least -10, so the same-park average park
+            rating falls by no more than 10 rating points on the game's 0 to 999 scale; a park without a complete
+            prior year has no baseline, not an automatic pass
+          basis: *threshold_basis
+        excludes: [abandoned-timeline rows, rehearsal and company data in one figure]
+        roadmap_source: "Gate 1 rulings of 2026-10-03; v1 is done when: Executive reporting"
+
+  - name: operating_days
+    label: Operating days
+    description: >-
+      Simulated game days a park ran on the kept timeline; closed months never count. It does not yet prove the
+      park was open to guests, because no captured field says so.
+    type: simple
+    type_params: {measure: kept_park_day_count}
+    config:
+      meta:
+        unit: simulated game days
+        clock: company date
+        grain: per park per company day; reported per company month, per company year and for the company
+        owner: the project owner
+        status: draft
+        role: supporting
+        source_models: [stg_park_snapshot]
+        excludes: [abandoned-timeline rows, rehearsal and company data in one figure]
+        roadmap_source: ADR 0012
+
+  - name: revenue_per_visit
+    label: Total guest spend per visit
+    description: Operating revenue divided by guest visits.
+    type: ratio
+    type_params: {numerator: operating_revenue, denominator: guest_visits}
+    config:
+      meta:
+        unit: usd per visit
+        clock: company date
+        grain: per park per company month; reported per company year and for the company
+        owner: the project owner
+        status: draft
+        role: supporting
+        source_models: [stg_finance_month, stg_park_snapshot]
+        excludes: [abandoned-timeline rows, rehearsal and company data in one figure]
+        roadmap_source: ADR 0012
+
+  - name: ride_revenue_per_visit
+    label: Ride spend per visit
+    description: Ride revenue divided by guest visits.
+    type: ratio
+    type_params: {numerator: ride_revenue, denominator: guest_visits}
+    config:
+      meta:
+        unit: usd per visit
+        clock: company date
+        grain: per park per company month; reported per company year and for the company
+        owner: the project owner
+        status: draft
+        role: supporting
+        source_models: [stg_finance_month, stg_park_snapshot]
+        excludes: [abandoned-timeline rows, rehearsal and company data in one figure]
+        roadmap_source: ADR 0012
+
+  - name: food_drink_revenue_per_visit
+    label: Food and beverage revenue per visit
+    description: Food and drink revenue divided by guest visits.
+    type: ratio
+    type_params: {numerator: food_drink_revenue, denominator: guest_visits}
+    config:
+      meta:
+        unit: usd per visit
+        clock: company date
+        grain: per park per company month; reported per company year and for the company
+        owner: the project owner
+        status: draft
+        role: supporting
+        source_models: [stg_finance_month, stg_park_snapshot]
+        excludes: [abandoned-timeline rows, rehearsal and company data in one figure]
+        roadmap_source: ADR 0012
+
+  - name: merchandise_revenue_per_visit
+    label: Merchandise revenue per visit
+    description: Merchandise revenue divided by guest visits.
+    type: ratio
+    type_params: {numerator: merchandise_revenue, denominator: guest_visits}
+    config:
+      meta:
+        unit: usd per visit
+        clock: company date
+        grain: per park per company month; reported per company year and for the company
+        owner: the project owner
+        status: draft
+        role: supporting
+        source_models: [stg_finance_month, stg_park_snapshot]
+        excludes: [abandoned-timeline rows, rehearsal and company data in one figure]
+        roadmap_source: ADR 0012
+
+  - name: revenue_per_operating_day
+    label: Revenue per simulated operating day
+    description: >-
+      Operating revenue divided by operating days, which are simulated game days, not yet proven days open to
+      guests.
+    type: ratio
+    type_params: {numerator: operating_revenue, denominator: operating_days}
+    config:
+      meta:
+        unit: usd per operating day
+        clock: company date
+        grain: per park per company month; reported per company year and for the company
+        owner: the project owner
+        status: draft
+        role: supporting
+        source_models: [stg_finance_month, stg_park_snapshot]
+        excludes: [abandoned-timeline rows, rehearsal and company data in one figure]
+        roadmap_source: ADR 0012
+
+  - name: same_park_guest_visits_yoy
+    label: "Same-park (like-for-like) growth: guest visits"
+    description: >-
+      The like-for-like change in guest visits against the prior company year, as a fraction of the prior year,
+      counting only parks with a complete prior company year on the kept timeline, so both years sum the same
+      parks.
+    type: derived
+    type_params:
+      expr: (guest_visits - guest_visits_prior_year) / guest_visits_prior_year
+      metrics:
+        - name: guest_visits
+          filter: "{{ Dimension('park_day__same_park_current_eligible') }} = true"
+        - name: guest_visits
+          alias: guest_visits_prior_year
+          offset_window: 1 year
+          filter: "{{ Dimension('park_day__same_park_prior_eligible') }} = true"
+    config:
+      meta:
+        unit: fraction of the prior year
+        clock: company date
+        grain: &same_park_grain >-
+          per park per company year; reported per park and for the eligible parks together; queried by
+          metric_time at year grain
+        owner: the project owner
+        status: draft
+        role: supporting
+        source_models: [stg_park_snapshot]
+        excludes: &same_park_excludes
+          - parks without a complete prior company year (listed separately)
+          - abandoned-timeline rows
+          - rehearsal and company data in one figure
+        roadmap_source: "NEXT 13 (industry names); ADR 0012"
+
+  - name: company_guest_visits_yoy
+    label: "Company-wide growth: guest visits"
+    description: >-
+      The change in guest visits against the prior company year, as a fraction of the prior year, over every park on
+      the kept timeline, as reported. A park in its first season adds its whole first year to the current year and
+      nothing to the prior year, so new parks count as growth here; the same-park metric leaves them out. Undefined
+      for the company's first year, which has no prior year.
+    type: derived
+    type_params:
+      expr: (guest_visits - guest_visits_prior_year) / guest_visits_prior_year
+      metrics:
+        - name: guest_visits
+        - name: guest_visits
+          alias: guest_visits_prior_year
+          offset_window: 1 year
+    config:
+      meta:
+        unit: fraction of the prior year
+        clock: company date
+        grain: &company_yoy_grain >-
+          for the company per company year, all parks together; queried by metric_time at year grain
+        owner: the project owner
+        status: draft
+        role: supporting
+        source_models: [stg_park_snapshot]
+        excludes: &company_yoy_excludes
+          - abandoned-timeline rows
+          - rehearsal and company data in one figure
+        roadmap_source: "Confirmation of the requirements brief, 2026-10-03; NEXT 13"
+
+  - name: company_operating_revenue_yoy
+    label: "Company-wide growth: operating revenue"
+    description: >-
+      The change in operating revenue against the prior company year, as a fraction of the prior year, over every
+      park on the kept timeline, as reported. A park in its first season adds its whole first year to the current
+      year and nothing to the prior year, so new parks count as growth here; the same-park metric leaves them out.
+      Undefined for the company's first year, which has no prior year.
+    type: derived
+    type_params:
+      expr: (operating_revenue - operating_revenue_prior_year) / operating_revenue_prior_year
+      metrics:
+        - name: operating_revenue
+        - name: operating_revenue
+          alias: operating_revenue_prior_year
+          offset_window: 1 year
+    config:
+      meta:
+        unit: fraction of the prior year
+        clock: company date
+        grain: *company_yoy_grain
+        owner: the project owner
+        status: draft
+        role: supporting
+        source_models: [stg_finance_month]
+        excludes: *company_yoy_excludes
+        roadmap_source: "Confirmation of the requirements brief, 2026-10-03; NEXT 13"
+
+  - name: company_operating_profit_yoy
+    label: "Company-wide growth: operating profit"
+    description: >-
+      The change in operating profit against the prior company year, as a fraction of the prior year, over every
+      park on the kept timeline, as reported. Not meaningful after a loss year, so both years are shown beside it. A
+      park in its first season adds its whole first year to the current year and nothing to the prior year, so new
+      parks count as growth here; the same-park metric leaves them out. Undefined for the company's first year,
+      which has no prior year.
+    type: derived
+    type_params:
+      expr: (operating_profit - operating_profit_prior_year) / operating_profit_prior_year
+      metrics:
+        - name: operating_profit
+        - name: operating_profit
+          alias: operating_profit_prior_year
+          offset_window: 1 year
+    config:
+      meta:
+        unit: fraction of the prior year
+        clock: company date
+        grain: *company_yoy_grain
+        owner: the project owner
+        status: draft
+        role: supporting
+        source_models: [stg_finance_month]
+        excludes: *company_yoy_excludes
+        roadmap_source: "Confirmation of the requirements brief, 2026-10-03; NEXT 13"
+
+  - name: company_operating_costs_yoy
+    label: "Company-wide growth: operating costs"
+    description: >-
+      The change in operating costs against the prior company year, as a fraction of the prior year, over every park
+      on the kept timeline, as reported. Both years are negative, so a positive figure means spending grew. A park
+      in its first season adds its whole first year to the current year and nothing to the prior year, so new parks
+      count as growth here; the same-park metric leaves them out. Undefined for the company's first year, which has
+      no prior year.
+    type: derived
+    type_params:
+      expr: (operating_costs - operating_costs_prior_year) / operating_costs_prior_year
+      metrics:
+        - name: operating_costs
+        - name: operating_costs
+          alias: operating_costs_prior_year
+          offset_window: 1 year
+    config:
+      meta:
+        unit: fraction of the prior year
+        clock: company date
+        grain: *company_yoy_grain
+        owner: the project owner
+        status: draft
+        role: supporting
+        source_models: [stg_finance_month]
+        excludes: *company_yoy_excludes
+        roadmap_source: "Confirmation of the requirements brief, 2026-10-03; NEXT 13"

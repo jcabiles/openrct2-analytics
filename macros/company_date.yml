@@ -1,0 +1,26 @@
+version: 2
+
+macros:
+  - name: company_date
+    description: >
+      Turns a company year and the game's month and day into a calendar date.
+      Game month 0 to 7 is March to October, the day passes through, and a
+      month outside 0 to 7 gives null. The only month-to-date rule in the
+      project; the park-year and statement models, the company calendar and
+      `dim_date` call it.
+    arguments:
+      - name: company_year
+        type: string
+        description: >
+          A company year column or SQL expression, as text, for example
+          `company_date('company_year', 'game_month', 'game_day')`.
+      - name: game_month
+        type: string
+        description: >
+          The game month column or expression, as text; 0 is March and 7 is
+          October.
+      - name: game_day
+        type: string
+        description: >
+          The game day-of-month column or expression, as text, from 1; it must
+          be a real day of the resulting month.

@@ -1,0 +1,62 @@
+{
+  "name": "park_month_revenue",
+  "relation": "marts.obt_park_month",
+  "columns": [
+    "park_month_key",
+    "park_id",
+    "company_date",
+    "operating_revenue",
+    "ride_revenue",
+    "food_drink_revenue",
+    "merchandise_revenue",
+    "entrance_revenue",
+    "ride_revenue_share_pct",
+    "food_drink_revenue_share_pct",
+    "merchandise_revenue_share_pct",
+    "entrance_revenue_share_pct"
+  ],
+  "rows": [
+    {
+      "park_month_key": "k1792587321039-h8a4t4|9|0",
+      "park_id": "k1792587321039-h8a4t4",
+      "company_date": "2000-03-01",
+      "operating_revenue": 7510.80,
+      "ride_revenue": 6060.00,
+      "food_drink_revenue": 1221.80,
+      "merchandise_revenue": 229.00,
+      "entrance_revenue": 0.00,
+      "ride_revenue_share_pct": 80.68,
+      "food_drink_revenue_share_pct": 16.27,
+      "merchandise_revenue_share_pct": 3.05,
+      "entrance_revenue_share_pct": 0.00
+    },
+    {
+      "park_month_key": "k1792587321039-h8a4t4|9|1",
+      "park_id": "k1792587321039-h8a4t4",
+      "company_date": "2000-04-01",
+      "operating_revenue": 10396.30,
+      "ride_revenue": 5736.00,
+      "food_drink_revenue": 1177.30,
+      "merchandise_revenue": 3483.00,
+      "entrance_revenue": 0.00,
+      "ride_revenue_share_pct": 55.17,
+      "food_drink_revenue_share_pct": 11.32,
+      "merchandise_revenue_share_pct": 33.50,
+      "entrance_revenue_share_pct": 0.00
+    },
+    {
+      "park_month_key": "k1792587321039-h8a4t4|9|2",
+      "park_id": "k1792587321039-h8a4t4",
+      "company_date": "2000-05-01",
+      "operating_revenue": 6861.30,
+      "ride_revenue": 5296.00,
+      "food_drink_revenue": 1317.30,
+      "merchandise_revenue": 248.00,
+      "entrance_revenue": 0.00,
+      "ride_revenue_share_pct": 77.19,
+      "food_drink_revenue_share_pct": 19.20,
+      "merchandise_revenue_share_pct": 3.61,
+      "entrance_revenue_share_pct": 0.00
+    }
+  ]
+}

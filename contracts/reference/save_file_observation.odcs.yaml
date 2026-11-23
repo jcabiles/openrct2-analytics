@@ -1,0 +1,85 @@
+apiVersion: v3.2.0
+kind: DataContract
+id: save_file_observation
+name: save_file_observation
+version: 1.2.0
+status: active
+description:
+  purpose: >-
+    Save-file observation records: one line each time the capture-time watcher saw a game save file at start,
+    created or changed. This record sits outside the event version line, the event envelope and the seq audit: it
+    is not an event, carries no park_id, session_id, seq or event_id, and the converter, dbt and the event
+    contracts never read it.
+servers:
+  - server: jsonl_through_duckdb
+    type: duckdb
+    database: __DATABASE__
+    schema: main
+schema:
+  - name: save_file_observation
+    physicalType: view
+    description: >-
+      One row per record line. JSON Lines files named save_file_observation_<YYYY-MM-DD>.jsonl land under
+      save_files/v1/, the date being the UTC date of observed_at. The watcher appends to them during
+      `make capture-data`; they are append-only except for a pre-go-live company delete (ADR 0033). `make autopilot-year` lands its record
+      files as save_file_observation_<YYYY-MM-DD>-autopilot-<session id>.jsonl (and its raw files as
+      events-<YYYY-MM-DD>-autopilot-<session id>.jsonl). The check reads
+      them all through one throwaway DuckDB view, every column as text, casting a cell only when the whole cell has
+      the right shape. A line that is not JSON with all seven fields is reported by the checker's reader, not by
+      this contract. Timestamps are UTC with millisecond precision.
+    properties:
+      - name: run_started_at
+        logicalType: timestamp
+        physicalType: TIMESTAMP WITH TIME ZONE
+        required: true
+        description: The capture run's start, UTC; groups one run's records.
+      - name: observation
+        logicalType: string
+        physicalType: VARCHAR
+        required: true
+        description: What the watcher saw, start, created or modified; text.
+      - name: file_name
+        logicalType: string
+        physicalType: VARCHAR
+        required: true
+        description: The save file's base name, the file name without one trailing .park; never a path; text.
+      - name: folder_kind
+        logicalType: string
+        physicalType: VARCHAR
+        required: true
+        description: >-
+          The watched folder the file sits in, save, autosave, parent or remembered (the game's last-used save
+          folder, read from config.ini); text.
+      - name: modified_at
+        logicalType: timestamp
+        physicalType: TIMESTAMP WITH TIME ZONE
+        required: true
+        description: The file's modified time from stat, UTC, cut to milliseconds.
+      - name: size_bytes
+        logicalType: integer
+        physicalType: BIGINT
+        required: true
+        description: The file's size from stat, in bytes.
+      - name: observed_at
+        logicalType: timestamp
+        physicalType: TIMESTAMP WITH TIME ZONE
+        required: true
+        description: The watcher's wall-clock time when the scan saw the change, UTC.
+    quality:
+      - type: sql
+        description: observation is start, created or modified
+        query: SELECT COUNT(*) FROM {object} WHERE observation NOT IN ('start', 'created', 'modified')
+        mustBe: 0
+      - type: sql
+        description: folder_kind is save, autosave, parent or remembered
+        query: SELECT COUNT(*) FROM {object} WHERE folder_kind NOT IN ('save', 'autosave', 'parent', 'remembered')
+        mustBe: 0
+      - type: sql
+        description: size_bytes is at least 0
+        query: SELECT COUNT(*) FROM {object} WHERE size_bytes < 0
+        mustBe: 0
+      - type: sql
+        description: file_name is not empty and holds no slash
+        query: >-
+          SELECT COUNT(*) FROM {object} WHERE file_name = '' OR contains(file_name, '/')
+        mustBe: 0

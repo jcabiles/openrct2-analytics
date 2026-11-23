@@ -1,0 +1,340 @@
+# The park company's metric catalog, ride operations: ride and stall revenue, profit, popularity and the boarding helpers.
+# Part of the catalog in metrics/*.yml: the north star (operating profit per company year), its metric tree and its
+# guardrails, in dbt 1.11's semantic-model and metric YAML shape. Decisions: docs/adr/0016-dbt-design.md.
+# dbt never reads these files; a column no model's YAML has yet is listed under its semantic model's planned_columns.
+semantic_models:
+  - name: ride_day
+    description: >-
+      One ride, stall or facility's daily snapshot; one row per ride occupancy per game day. Coaster statistic dimensions
+      join when roadmap NEXT 17 gives them a captured source.
+    model: ref('fct_ride_day')
+    defaults: {agg_time_dimension: company_date}
+    primary_entity: ride_day
+    entities:
+      - {name: ride, type: foreign, expr: ride_key}
+      - {name: park, type: foreign, expr: park_id}
+      - {name: park_day, type: foreign, expr: park_day_key}
+    dimensions:
+      - {name: company_date, type: time, type_params: {time_granularity: day}}
+      - {name: classification, type: categorical}
+      - {name: ride_type, type: categorical}
+      - {name: excitement_band, type: categorical}
+      - {name: intensity_band, type: categorical}
+      - {name: nausea_band, type: categorical}
+      - {name: ride_age_months, type: categorical}
+      - {name: item_code, type: categorical}
+      - {name: item_group, type: categorical}
+      - {name: is_single_item, type: categorical}
+      - {name: is_open_day, type: categorical}
+      - {name: ride_price_listed_usd, type: categorical}
+    measures:
+      - name: ride_ticket_sales_by_ride_usd
+        agg: sum
+        expr: case when classification = 'ride' then gross_sales_usd - photo_sales_usd end
+      - name: food_drink_sales_by_item_usd
+        agg: sum
+        expr: case when classification = 'stall' and item_group = 'food_drink' then gross_sales_usd end
+      - name: merchandise_sales_by_item_usd
+        agg: sum
+        expr: >-
+          case when classification = 'stall' and item_group = 'merchandise' then gross_sales_usd
+          when classification = 'ride' then photo_sales_usd end
+      - {name: ride_profit_usd, agg: sum, expr: "case when classification = 'ride' then profit_usd end"}
+      - {name: stall_profit_usd, agg: sum, expr: "case when classification = 'stall' then profit_usd end"}
+      - name: single_item_stall_units
+        agg: sum
+        expr: case when classification = 'stall' and is_single_item then units_sold end
+      - {name: open_day_count, agg: sum_boolean, expr: is_open_day}
+    config:
+      meta:
+        row_rules:
+          - kept timeline only (ADR 0006)
+          - one row per ride occupancy per game day (uniqueness test on ride_day_key: ride_key and the game date)
+          - one data set per build, rehearsal or company (ADR 0013)
+          - facilities (toilets, ATMs, first aid) count in no sales or profit measure
+        planned_columns:
+          - name: excitement_band
+            planned_by: >-
+              roadmap NEXT 7, intermediate layer: banded from excitement_hundredths (-1 unrated becomes null in
+              staging); band edges set by NEXT 7
+          - name: intensity_band
+            planned_by: roadmap NEXT 7, intermediate layer, from intensity_hundredths (as excitement_band)
+          - name: nausea_band
+            planned_by: roadmap NEXT 7, intermediate layer, from nausea_hundredths (as excitement_band)
+          - name: item_code
+            planned_by: >-
+              Roadmap NEXT 7, intermediate layer, sets this to a single-item stall's shop_item or a two-item stall's
+              pair in read order, '<shop_item>+<shop_item_secondary>'. The no-item value is null; the game's 255
+              placeholder is nulled in staging. For a ride's photo sales, it uses on_ride_photo.
+          - name: item_group
+            planned_by: roadmap NEXT 7, intermediate layer (food_drink or merchandise, the group both items share)
+          - name: is_single_item
+            planned_by: roadmap NEXT 7, intermediate layer (shop_item_secondary is null; staging nulls the game's 255 placeholder)
+          - name: gross_sales_usd
+            planned_by: >-
+              roadmap NEXT 7, intermediate layer: the daily change in the stg_ride_snapshot `_usd` column converted
+              from total_profit_tenths, plus the `_usd` column converted from running_cost_per_fortnight_tenths
+              (upkeep), plus item cost (the contract has no item-cost column, so NEXT 7 names its source), the
+              method of the 2026-09-28 revenue check (docs/FINDINGS.md); no second tenths-to-dollars conversion
+          - name: photo_sales_usd
+            planned_by: >-
+              roadmap NEXT 7, intermediate layer: solved from the ride's customer and profit counters, as the
+              2026-09-28 FINDINGS rows did (the plugin API cannot read the photo count); 0, never null, for a ride
+              without photos, so gross_sales_usd - photo_sales_usd keeps the ride in metric 7; NEXT 7 tests not_null
+          - name: units_sold
+            planned_by: roadmap NEXT 7, intermediate layer (the counter rule NEXT 7's spec sets)
+          - name: timeline_status
+            planned_by: roadmap NEXT 3b, intermediate layer (save lineage, kept or abandoned)
+          - name: data_set
+            planned_by: ADR 0023 and roadmap NEXT 16 (the park registry feed, current model `int_park_registry__current`); derived in the intermediate layer, roadmap NEXT 3b
+
+  - name: ride_boarding
+    description: One guest boarding one ride, from the `guest_boarded` event; one row per boarding.
+    model: ref('stg_guest_boarded')
+    defaults: {agg_time_dimension: company_date}
+    primary_entity: ride_boarding
+    entities:
+      - {name: ride, type: foreign, expr: ride_key}
+      - {name: park, type: foreign, expr: park_id}
+    dimensions:
+      - {name: company_date, type: time, type_params: {time_granularity: day}}
+      - {name: ride_price_listed_usd, type: categorical}
+    measures:
+      - {name: boarding_count, agg: sum, expr: "1"}
+    config:
+      meta:
+        row_rules:
+          - kept timeline only (ADR 0006)
+          - one row per boarding; duplicate deliveries removed on event_id (roadmap NEXT 3a)
+          - one data set per build, rehearsal or company (ADR 0013)
+        planned_columns:
+          - name: ride_key
+            planned_by: roadmap NEXT 7, intermediate layer (the ride's key, as in ride_day)
+          - name: company_date
+            planned_by: ADR 0023 and roadmap NEXT 3b, intermediate layer, company_date from `int_park_registry__current` (as in park_day)
+          - name: timeline_status
+            planned_by: roadmap NEXT 3b, intermediate layer (save lineage, kept or abandoned)
+          - name: data_set
+            planned_by: ADR 0023 and roadmap NEXT 16 (the park registry feed, current model `int_park_registry__current`); derived in the intermediate layer, roadmap NEXT 3b
+        repoint_to: the boarding fact in the marts (roadmap NEXT 3c)
+
+metrics:
+  - name: ride_revenue_by_ride
+    label: Ride revenue by ride
+    description: >-
+      Each ride's ticket sales from its own daily counters, without its on-ride photo sales. Summed over a park's
+      rides, it should match ride revenue within a stated tolerance, not exactly.
+    type: simple
+    type_params: {measure: ride_ticket_sales_by_ride_usd}
+    config:
+      meta:
+        unit: usd
+        clock: company date
+        grain: per ride occupancy per game day; reported per company year
+        owner: the project owner
+        status: draft
+        role: tree
+        source_models: [stg_ride_snapshot]
+        tree:
+          parent: ride_revenue
+          link: hypothesis
+          claim: the counters' sum per park and month equals the parent within the tolerance
+          direction: equal
+          lag: same company month
+          evidence: &counter_evidence >-
+            observational: 19 tested comparisons of unit counters against the ledger's sales lines, all within
+            max(1% of the ledger figure, 10 tenths), none spanning a save reload; one park, one player
+            (docs/FINDINGS.md, 2026-09-28 revenue-check row)
+          rivals: [counter drift across a save reload (untested), a mid-month photo price change]
+          review: each company year-end close
+          check: >-
+            a warn-severity dbt test by roadmap NEXT 4 (the P&L and its reconciliation tests) comparing each
+            park-month's sum with ride_revenue
+          tolerance: max(1% of the ledger figure, $1.00) per park-month
+        excludes:
+          - on-ride photo sales
+          - facilities (toilets, ATMs, first aid)
+          - abandoned-timeline rows
+          - rehearsal and company data in one figure
+        roadmap_source: "Gate 1 rulings of 2026-10-03; NEXT 7"
+
+  - name: food_drink_revenue_by_item
+    label: Food and drink revenue by item
+    description: >-
+      Each food or drink stall's sales, grouped by the item it sells. A stall selling two items keeps its sales
+      together under the item pair, because its counters do not split them.
+    type: simple
+    type_params: {measure: food_drink_sales_by_item_usd}
+    config:
+      meta:
+        unit: usd
+        clock: company date
+        grain: per stall occupancy per game day, grouped by item_code; reported per company year
+        owner: the project owner
+        status: draft
+        role: tree
+        source_models: [stg_ride_snapshot]
+        tree:
+          parent: food_drink_revenue
+          link: hypothesis
+          claim: the counters' sum per park and month equals the parent within the tolerance
+          direction: equal
+          lag: same company month
+          evidence: *counter_evidence
+          rivals: [counter drift across a save reload (untested)]
+          review: each company year-end close
+          check: >-
+            a warn-severity dbt test by roadmap NEXT 4 (the P&L and its reconciliation tests) comparing each
+            park-month's sum with food_drink_revenue
+          tolerance: max(1% of the ledger figure, $1.00) per park-month
+        excludes:
+          - facilities (toilets, ATMs, first aid)
+          - abandoned-timeline rows
+          - rehearsal and company data in one figure
+        roadmap_source: "Gate 1 rulings of 2026-10-03; NEXT 7"
+
+  - name: merchandise_revenue_by_item
+    label: Merchandise revenue by item
+    description: >-
+      Each merchandise stall's sales grouped by item, plus each ride's on-ride photo sales as the item
+      on_ride_photo. A stall selling two items keeps its sales together under the item pair; umbrellas are split
+      later (roadmap NEXT 18).
+    type: simple
+    type_params: {measure: merchandise_sales_by_item_usd}
+    config:
+      meta:
+        unit: usd
+        clock: company date
+        grain: per ride or stall occupancy per game day, grouped by item_code; reported per company year
+        owner: the project owner
+        status: draft
+        role: tree
+        source_models: [stg_ride_snapshot]
+        tree:
+          parent: merchandise_revenue
+          link: hypothesis
+          claim: the counters' sum per park and month equals the parent within the tolerance
+          direction: equal
+          lag: same company month
+          evidence: *counter_evidence
+          rivals: [counter drift across a save reload (untested), a mid-month photo price change]
+          review: each company year-end close
+          check: >-
+            a warn-severity dbt test by roadmap NEXT 4 (the P&L and its reconciliation tests) comparing each
+            park-month's sum with merchandise_revenue
+          tolerance: max(1% of the ledger figure, $1.00) per park-month
+        excludes:
+          - facilities (toilets, ATMs, first aid)
+          - abandoned-timeline rows
+          - rehearsal and company data in one figure
+        roadmap_source: "Gate 1 rulings of 2026-10-03; NEXT 7; NEXT 18"
+
+  - name: ride_profit
+    label: Ride profit
+    description: Each ride's profit from its own counter, the daily change in the ride's running profit total.
+    type: simple
+    type_params: {measure: ride_profit_usd}
+    config:
+      meta:
+        unit: usd
+        clock: company date
+        grain: per ride occupancy per game day; reported per company year
+        owner: the project owner
+        status: draft
+        role: supporting
+        source_models: [stg_ride_snapshot]
+        excludes: &unit_excludes
+          - facilities (toilets, ATMs, first aid)
+          - abandoned-timeline rows
+          - rehearsal and company data in one figure
+        roadmap_source: "v1 is done when: Ride profitability; NEXT 7"
+
+  - name: stall_profit
+    label: Stall profit
+    description: >-
+      Each stall's profit from its own counter, grouped by the item it sells; a two-item stall under its item pair.
+    type: simple
+    type_params: {measure: stall_profit_usd}
+    config:
+      meta:
+        unit: usd
+        clock: company date
+        grain: per stall occupancy per game day, grouped by item_code; reported per company year
+        owner: the project owner
+        status: draft
+        role: supporting
+        source_models: [stg_ride_snapshot]
+        excludes: *unit_excludes
+        roadmap_source: "v1 is done when: Stall profitability; NEXT 7"
+
+  - name: stall_units_sold
+    label: Stall units sold
+    description: Purchases at each stall that sells a single item, read from the plugin's `ScRide.totalCustomers`; it appears to count purchases, not unique customers, so a guest who buys twice appears to count twice. The plugin API type definitions describe the counter only as a ride's customer count; the game source, read through a summarizing tool, appears to raise it once per purchase at an item stall, per exit for rides, and per use for toilets, cash machines and first aid (none of those other kinds are in this metric). Not checked in game. Roadmap NEXT 7's spec sets the counter rule.
+    type: simple
+    type_params: {measure: single_item_stall_units}
+    config:
+      meta:
+        unit: count
+        clock: company date
+        grain: per stall occupancy per game day, grouped by item_code; reported per company year
+        owner: the project owner
+        status: draft
+        role: supporting
+        source_models: [stg_ride_snapshot]
+        excludes:
+          - two-item stalls, whose counters do not split units between items
+          - facilities (toilets, ATMs, first aid)
+          - abandoned-timeline rows
+          - rehearsal and company data in one figure
+        roadmap_source: "Scope rulings; NEXT 7"
+
+  - name: ride_popularity
+    label: Ride popularity
+    description: How many guests boarded a ride per day it was open.
+    type: ratio
+    type_params: {numerator: ride_boardings, denominator: ride_open_days}
+    config:
+      meta:
+        unit: boardings per open day
+        clock: company date
+        grain: per ride occupancy per game day; reported per company year
+        owner: the project owner
+        status: draft
+        role: supporting
+        source_models: [stg_guest_boarded, stg_ride_snapshot]
+        excludes: *unit_excludes
+        roadmap_source: NEXT 7
+
+  - name: ride_boardings
+    label: Ride boardings
+    description: Guests boarding a ride, one per boarding; a helper input to ride popularity.
+    type: simple
+    type_params: {measure: boarding_count}
+    config:
+      meta:
+        unit: count
+        clock: company date
+        grain: per ride occupancy per game day; reported per company year
+        owner: the project owner
+        status: draft
+        role: supporting
+        source_models: [stg_guest_boarded]
+        excludes: *unit_excludes
+        roadmap_source: "NEXT 7; full capture part 2"
+
+  - name: ride_open_days
+    label: Ride open days
+    description: Days a ride's status was open when its daily snapshot was read; a helper input to ride popularity.
+    type: simple
+    type_params: {measure: open_day_count}
+    config:
+      meta:
+        unit: simulated game days
+        clock: company date
+        grain: per ride occupancy per game day; reported per company year
+        owner: the project owner
+        status: draft
+        role: supporting
+        source_models: [stg_ride_snapshot]
+        excludes: *unit_excludes
+        roadmap_source: NEXT 7

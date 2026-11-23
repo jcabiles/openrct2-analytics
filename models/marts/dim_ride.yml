@@ -1,0 +1,164 @@
+version: 2
+
+models:
+  - name: dim_ride
+    description: >-
+      Answers which ride, stall, or facility occupies each ride key, with its
+      latest kept descriptive values and the span of kept company dates. Grain:
+      one row per ride_key in int_ride_days__kept. Key: ride_key. Type 1
+      replacement keeps the latest descriptive values. Unit: no unit; clock:
+      game ticks for descriptive values (the latest kept reading), company date
+      for the date span. On the zero-row build the model is empty because there
+      are no kept ride-days.
+    config:
+      contract:
+        enforced: true
+    meta:
+      expected_min_rows: 1
+    data_tests:
+      - rows_on_sample:
+          arguments:
+            expected: 29
+    columns:
+      - name: ride_key
+        data_type: varchar
+        description: "Occupancy key from kept ride-days; no unit; clock: game."
+        data_tests:
+          - unique:
+              config:
+                severity: error
+          - not_null
+      - name: park_id
+        data_type: varchar
+        description: "Stable park identifier for the occupancy; no unit; clock: ride occupancy."
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_park')
+                field: park_id
+      - name: ride_id
+        data_type: integer
+        description: "Game ride identifier for the occupancy; unit: slot number; no clock."
+      - name: build_date_months_elapsed
+        data_type: integer
+        description: "Build date offset from the game calendar origin; unit: months; clock: game calendar."
+      - name: first_seen_ticks
+        data_type: bigint
+        description: "Elapsed game ticks when this occupancy first appeared; unit: ticks; clock: game clock."
+      - name: ride_name
+        data_type: varchar
+        description: "Latest kept name for the occupancy; no unit; clock: game ticks (latest kept reading)."
+      - name: classification
+        data_type: varchar
+        description: "Latest kept ride classification; no unit; clock: game ticks (latest kept reading)."
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['ride', 'stall', 'facility']
+      - name: ride_type
+        data_type: integer
+        description: "Latest kept game ride type; unit: identifier; clock: game ticks (latest kept reading)."
+      - name: ride_object
+        data_type: varchar
+        description: "Latest kept object identifier; no unit; clock: game ticks (latest kept reading)."
+      - name: shop_item
+        data_type: integer
+        description: "Latest kept primary shop item code; unit: identifier; clock: game ticks (latest kept reading)."
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_item')
+                field: shop_item
+      - name: shop_item_secondary
+        data_type: integer
+        description: "Latest kept secondary shop item code; unit: identifier; clock: game ticks (latest kept reading)."
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_item')
+                field: shop_item
+      - name: first_company_date
+        data_type: date
+        description: "First kept company date for the occupancy; no unit; clock: company date."
+      - name: last_company_date
+        data_type: date
+        description: "Last kept company date for the occupancy; no unit; clock: company date."
+
+unit_tests:
+  - name: dim_ride_keeps_latest_name_and_occupancy_date_spans
+    description: >-
+      It proves that the latest reading by ticks wins for every descriptive
+      column even when its values are smaller or null, and two occupancies of
+      one slot stay separate rows with their own date spans.
+    model: dim_ride
+    given:
+      - input: ref('int_ride_days__kept')
+        format: sql
+        rows: |
+          select
+            cast('k1' as varchar) as ride_key,
+            cast('p1' as varchar) as park_id,
+            cast(1 as integer) as ride_id,
+            cast(42 as integer) as build_date_months_elapsed,
+            cast(50 as bigint) as first_seen_ticks,
+            cast('Burger Bar' as varchar) as ride_name,
+            cast('stall' as varchar) as classification,
+            cast(23 as integer) as ride_type,
+            cast('obj_z' as varchar) as ride_object,
+            cast(9 as integer) as shop_item,
+            cast(8 as integer) as shop_item_secondary,
+            cast(100 as bigint) as game_ticks_elapsed,
+            cast('zA' as varchar) as session_id,
+            cast('2000-03-01' as date) as company_date
+          union all
+          select
+            cast('k1' as varchar),
+            cast('p1' as varchar),
+            cast(1 as integer),
+            cast(41 as integer),
+            cast(50 as bigint),
+            cast('Burger Bar' as varchar),
+            cast('stall' as varchar),
+            cast(22 as integer),
+            cast('obj_y' as varchar),
+            cast(8 as integer),
+            cast(8 as integer),
+            cast(150 as bigint),
+            cast('zA' as varchar),
+            cast('2000-03-02' as date)
+          union all
+          select
+            cast('k1' as varchar),
+            cast('p1' as varchar),
+            cast(1 as integer),
+            cast(40 as integer),
+            cast(50 as bigint),
+            cast('Burger Barn' as varchar),
+            cast('stall' as varchar),
+            cast(21 as integer),
+            cast('obj_a' as varchar),
+            cast(7 as integer),
+            cast(null as integer),
+            cast(200 as bigint),
+            cast('aB' as varchar),
+            cast('2000-03-03' as date)
+          union all
+          select
+            cast('k2' as varchar),
+            cast('p1' as varchar),
+            cast(1 as integer),
+            cast(40 as integer),
+            cast(250 as bigint),
+            cast('Burger Cart' as varchar),
+            cast('stall' as varchar),
+            cast(23 as integer),
+            cast('obj_c' as varchar),
+            cast(11 as integer),
+            cast(12 as integer),
+            cast(300 as bigint),
+            cast('mC' as varchar),
+            cast('2000-03-04' as date)
+    expect:
+      rows:
+        - {ride_key: k1, park_id: p1, ride_id: 1, build_date_months_elapsed: 40, first_seen_ticks: 50, ride_name: 'Burger Barn', classification: stall, ride_type: 21, ride_object: obj_a, shop_item: 7, shop_item_secondary: null, first_company_date: '2000-03-01', last_company_date: '2000-03-03'}
+        - {ride_key: k2, park_id: p1, ride_id: 1, build_date_months_elapsed: 40, first_seen_ticks: 250, ride_name: 'Burger Cart', classification: stall, ride_type: 23, ride_object: obj_c, shop_item: 11, shop_item_secondary: 12, first_company_date: '2000-03-04', last_company_date: '2000-03-04'}

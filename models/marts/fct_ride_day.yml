@@ -1,0 +1,134 @@
+version: 2
+
+models:
+  - name: fct_ride_day
+    description: >-
+      Answers how each ride, stall or facility's guest and profit counters
+      changed on each kept game day. Kept rows only, covering every kind of
+      attraction. Sales, units sold, bands and item groups are not here. Grain:
+      one row per ride occupancy per game day on the kept timeline. Key:
+      ride_day_key, formed from the ride key and game date, never company date.
+      Unit: none for the model as a whole; clock: game day for readings and
+      company date for company_date. On the zero-row build the model is empty
+      because there are no kept ride-days.
+    config:
+      contract:
+        enforced: true
+    meta:
+      expected_min_rows: 1
+    data_tests:
+      - rows_on_sample:
+          arguments:
+            expected: 3045
+    columns:
+      - name: ride_day_key
+        data_type: varchar
+        description: "Ride key and game date joined by pipes; text; no unit; clock: game day."
+        data_tests:
+          - unique:
+              config:
+                severity: error
+          - not_null
+      - name: ride_key
+        data_type: varchar
+        description: "Park, ride slot, build month and first tick joined by pipes; text; no unit; clock: game."
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_ride')
+                field: ride_key
+      - name: park_day_key
+        data_type: varchar
+        description: "Park identifier and game date joined by pipes; text; no unit; clock: game day."
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('fct_park_day')
+                field: park_day_key
+              config:
+                severity: warn
+      - name: park_id
+        data_type: varchar
+        description: "Stable identifier for the park save; text; no unit; no clock."
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_park')
+                field: park_id
+      - name: session_id
+        data_type: varchar
+        description: "Plugin start identifier, new on every start; text; no unit; clock: game day."
+      - name: event_id
+        data_type: varchar
+        description: "Identifier for the source ride snapshot; text; no unit; clock: game day."
+        data_tests:
+          - not_null
+      - name: game_year
+        data_type: integer
+        description: "In-game year; unit: year; clock: game calendar."
+      - name: game_month
+        data_type: integer
+        description: "In-game month numbered 0 to 7; unit: month; clock: game calendar."
+      - name: game_day
+        data_type: integer
+        description: "In-game day of the month; unit: day; clock: game calendar."
+      - name: company_date
+        data_type: date
+        description: "Company calendar date for the game day; unit: date; clock: company date."
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: company_date
+      - name: classification
+        data_type: varchar
+        description: "Attraction kind: ride, stall or facility; text, no unit; clock: game day."
+      - name: ride_type
+        data_type: integer
+        description: "The game's ride type code; unit: code; clock: game day."
+      - name: status
+        data_type: varchar
+        description: "Operating status named by the game; text, no unit; clock: game day."
+      - name: is_open_day
+        data_type: boolean
+        description: "True when the attraction is open at the reading; boolean, no unit; clock: game day."
+      - name: ride_age_months
+        data_type: integer
+        description: "Age of the attraction at the reading; unit: month; clock: game day."
+      - name: excitement_hundredths
+        data_type: integer
+        description: "Excitement rating in hundredths of a rating point; unit: hundredths of a rating point; clock: game day."
+      - name: intensity_hundredths
+        data_type: integer
+        description: "Intensity rating in hundredths of a rating point; unit: hundredths of a rating point; clock: game day."
+      - name: nausea_hundredths
+        data_type: integer
+        description: "Nausea rating in hundredths of a rating point; unit: hundredths of a rating point; clock: game day."
+      - name: price_1_usd
+        data_type: decimal(18,2)
+        description: "Listed first price when read, not the amount charged; unit: US dollar; clock: game day."
+      - name: price_2_usd
+        data_type: decimal(18,2)
+        description: "Listed second price when read, not the amount charged; unit: US dollar; clock: game day."
+      - name: ride_price_listed_usd
+        data_type: decimal(18,2)
+        description: "Listed ride price when read, not the amount charged; null for stalls and facilities; unit: US dollar; clock: game day."
+      - name: customers_increase
+        data_type: bigint
+        description: "Rise in the game's guest counter from each of this game day's kept readings to the next kept reading of the same session and occupancy, summed over the day; null when no kept reading of the day has a later one (always on a session's last reading). On a ride row it counts guests leaving the ride plus on-ride photos sold; on a stall row it counts purchases; unit: guests; clock: game day."
+      - name: profit_usd
+        data_type: decimal(18,2)
+        description: "Profit change over kept readings on the game day, which may be negative; null when no kept reading of the day has a known change to a later kept reading of its session and occupancy; unit: US dollars; clock: game day."
+      - name: availability_from_downtime_pct
+        data_type: integer
+        description: "100 minus the game's downtime reading at the day's last kept reading; the game computes downtime over its own window, which the repo does not record, so this is not a share measured over this game day; time the ride stood closed may not count as downtime, so a ride closed all day can read 100; null for stalls and facilities and when the reading is null; unit: percent; clock: game day (the day's last kept reading)."
+      - name: longest_queue_seen_minutes
+        data_type: integer
+        description: "Longest queue seen at the day's kept readings, the largest queue time among the used stations; a longer queue between readings is not seen; null when every reading of the day is null (no station in use) and for stalls and facilities; unit: minutes as the game reports them; clock: game day."
+      - name: guest_rating_pct
+        data_type: integer
+        description: "The game's guest satisfaction rating at the day's last kept reading, not the excitement, intensity or nausea ratings; null when not yet measured and for stalls and facilities; unit: percent, 0 to 100; clock: game day (the day's last kept reading)."

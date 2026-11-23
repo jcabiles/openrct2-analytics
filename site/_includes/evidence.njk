@@ -1,0 +1,36 @@
+{%- from "figure.njk" import figure as region -%}
+{%- set companyFig = "company-year" | figure(exports) -%}
+{%- set parkFig = "park-year" | figure(exports) -%}
+{%- set sampleFig = "sample" | figure(exports) -%}
+<div class="evidence" id="evidence">
+  <p>{{ evidence.closeRule }}</p>
+  <p>{{ evidence.reconciliation }} {{ evidence.firstMonth }}</p>
+  {%- set record = sample.rows[0] %}
+  <p data-sample-statement data-data-set="{{ record.data_set }}" data-parks="{{ record.parks }}" data-sessions="{{ record.sessions }}" data-player-played="{{ record.player_played }}">{% call region(sampleFig, "span", "span") %}{{ evidence.sample(record) }}{% endcall %}</p>
+  {% call region(companyFig) %}
+  {%- if companyFig.rows | length %}
+  <div class="tbl-wrap" tabindex="0" role="region" aria-label="{{ companyFig.caption }}"><table id="company-year-table" class="tbl plain">
+    <caption>{{ companyFig.caption }}</caption>
+    <thead><tr>{% for header in companyFig.headers %}<th scope="col">{{ header }}</th>{% endfor %}</tr></thead>
+    <tbody>
+      {%- for row in companyFig.rows %}
+      <tr><td>{{ row.company_year }}</td><td>{{ row.parks_reporting }}</td><td>{{ row.parks_partial_first_season }}</td><td>{{ row.months_checked }}</td><td>{{ row.operating_profit | usd }}</td></tr>
+      {%- endfor %}
+    </tbody>
+  </table></div>
+  {%- else %}
+  <p>{{ companyFig.empty }}</p>
+  {%- endif %}
+  {% endcall %}
+  {% call region(parkFig) %}
+  <div class="tbl-wrap" tabindex="0" role="region" aria-label="{{ parkFig.caption }}"><table id="park-year-table" class="tbl plain">
+    <caption>{{ parkFig.caption }}</caption>
+    <thead><tr>{% for header in parkFig.headers %}<th scope="col">{{ header }}</th>{% endfor %}</tr></thead>
+    <tbody>
+      {%- for row in parkFig.rows %}
+      <tr><td>{{ row.company_year }}</td><td>{{ row.park_id }}</td><td>{{ row.statements_kept }} of {{ row.statements_expected }}</td><td>{{ row.months_checked }}</td><td>{{ row.operating_profit | usd }}</td><td>{{ parkFig.statusWords[row.close_status] }}</td></tr>
+      {%- endfor %}
+    </tbody>
+  </table></div>
+  {% endcall %}
+</div>

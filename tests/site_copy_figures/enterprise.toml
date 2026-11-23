@@ -1,0 +1,24 @@
+# Numbers the company-rules section (#enterprise) shows as plain copy, outside any figure region
+# ("Numbers kept as copy" in docs/ai-dlc/specs/site-mockup-port.md). Each `shown` text must appear
+# in every build; each `phrases` entry must be found, as a fixed string, in `source`.
+
+[[kept]]
+id = "K1"
+where = "rule 1 effect: entrance revenue"
+shown = ["$0.00"]
+source = "docs/ai-dlc/roadmap/park-company.md"
+phrases = ["entry is free"]
+
+[[kept]]
+id = "K2"
+where = "clocks: the company calendar's first day"
+shown = ["1 March 2000"]
+source = "docs/ai-dlc/roadmap/park-company.md"
+phrases = ["1 March 2000"]
+
+[[kept]]
+id = "K3"
+where = "clocks: the real-time timing test"
+shown = ["68 game days", "28 September 2026", "54.7 minutes"]
+source = "docs/FINDINGS.md"
+phrases = ["one run of 68 game days", "54.7 real minutes per game year"]

@@ -1,0 +1,10 @@
+# Numbers the page frame (hero, top menu, footer) shows as plain copy, outside any figure region
+# ("Numbers kept as copy" in docs/ai-dlc/specs/site-mockup-port.md). Each `shown` text must appear
+# in every build; each `phrases` entry must be found, as a fixed string, in `source`.
+
+[[kept]]
+id = "K2"
+where = "hero serial: the company calendar's first day, printed as a ticket number"
+shown = ["No. 2000 0301"]
+source = "docs/ai-dlc/roadmap/park-company.md"
+phrases = ["1 March 2000"]

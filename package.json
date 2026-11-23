@@ -1,0 +1,14 @@
+{
+  "name": "openrct2-analytics",
+  "private": true,
+  "devDependencies": {
+    "@11ty/eleventy": "3.1.6",
+    "@observablehq/plot": "0.6.17",
+    "@openrct2/types": "0.5.5",
+    "typescript": "5.9.3"
+  },
+  "scripts": {
+    "plugin:build": "tsc -p plugin",
+    "site:build": "eleventy --config=site/eleventy.config.mjs"
+  }
+}

@@ -1,0 +1,123 @@
+version: 2
+
+models:
+  - name: obt_ride_month
+    description: >-
+      Answers how available, how queued and how busy each ride was in each
+      company month, for the Operations and Attractions panels. Grain: one row
+      per ride occupancy per game month with at least one kept ride-day, rides
+      only (stalls and facilities have no row); key: ride_month_key. It reads
+      only the ride-day fact, the ride dimension and the date dimension. Unit:
+      guests, minutes, percent and days as stated per measure; clock: company
+      month (a game month maps to one company month). On the zero-row build the
+      model is empty because there are no kept ride-days.
+    config:
+      contract:
+        enforced: true
+    meta:
+      expected_min_rows: 1
+    data_tests:
+      - rows_on_sample:
+          arguments:
+            expected: 28
+    columns:
+      - name: ride_month_key
+        data_type: varchar
+        description: "Ride key, game year and game month joined by pipes; text, no unit; clock: game month."
+        data_tests:
+          - unique
+          - not_null
+      - name: ride_key
+        data_type: varchar
+        description: "Park, ride slot, build month and first tick joined by pipes; text, no unit; no clock."
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_ride')
+                field: ride_key
+      - name: park_id
+        data_type: varchar
+        description: "Stable identifier for the park save; text, no unit; no clock."
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_park')
+                field: park_id
+      - name: ride_name
+        data_type: varchar
+        description: "Latest kept name of the ride occupancy; text, no unit; no clock."
+      - name: game_year
+        data_type: integer
+        description: "In-game year; unit: year; clock: game calendar."
+      - name: game_month
+        data_type: integer
+        description: "In-game month numbered 0 to 7; unit: month; clock: game calendar."
+      - name: company_year
+        data_type: integer
+        description: "Company year of the month; unit: year; clock: company date."
+        data_tests:
+          - not_null
+      - name: company_date
+        data_type: date
+        description: "First day of the ride-month's company month; unit: date; clock: company date."
+        data_tests:
+          - not_null
+      - name: ride_days
+        data_type: integer
+        description: "Count of the month's kept ride-days; unit: days; clock: game day."
+      - name: average_availability_from_downtime_pct
+        data_type: decimal(18,2)
+        description: "Mean of the daily availability readings over the month's kept ride-days where the reading is not null; null when every day is null. The game computes downtime over its own window, which the repo does not record, and time the ride stood closed may not count, so this is an average of daily readings, not the share of the month the ride ran; unit: percent; clock: company month."
+      - name: longest_queue_seen_minutes
+        data_type: integer
+        description: "Largest of the daily longest queues seen at kept readings; a longer queue between readings is not seen; null when every day is null; unit: minutes as the game reports them; clock: company month."
+      - name: riders
+        data_type: bigint
+        description: "Sum of the daily rise in the guest counter over the month's kept ride-days; null when every day is null. Each day's value runs to the next kept reading, so the last day's rise may reach into the next month's first reading; a rise across a session break is not counted; on-ride photo sales count as riders; unit: guests; clock: company month."
+
+unit_tests:
+  - name: obt_ride_month_u_rolls_up_ride_days
+    description: >-
+      It proves that one ride over two game months rolls up to one row per
+      month: month 0 has three ride-days, the mean of the two non-null
+      availability readings 90 and 80 (85.00; a third day with null
+      availability is not counted), the maximum queue 9 (seen on the earlier
+      day) and riders 10 (the null days add nothing);
+      month 1 has one ride-day with null availability and null riders; and a
+      stall row yields no row.
+    model: obt_ride_month
+    given:
+      - input: ref('fct_ride_day')
+        format: sql
+        rows: |
+          select cast('park_a|1|1' as varchar) as ride_key, cast('park_a' as varchar) as park_id, cast(9 as integer) as game_year, cast(0 as integer) as game_month, cast('2000-03-01' as date) as company_date, cast('ride' as varchar) as classification, cast(90 as integer) as availability_from_downtime_pct, cast(9 as integer) as longest_queue_seen_minutes, cast(10 as bigint) as customers_increase
+          union all
+          select cast('park_a|1|1' as varchar), cast('park_a' as varchar), cast(9 as integer), cast(0 as integer), cast('2000-03-02' as date), cast('ride' as varchar), cast(80 as integer), cast(4 as integer), cast(null as bigint)
+          union all
+          select cast('park_a|1|1' as varchar), cast('park_a' as varchar), cast(9 as integer), cast(0 as integer), cast('2000-03-03' as date), cast('ride' as varchar), cast(null as integer), cast(null as integer), cast(null as bigint)
+          union all
+          select cast('park_a|1|1' as varchar), cast('park_a' as varchar), cast(9 as integer), cast(1 as integer), cast('2000-04-01' as date), cast('ride' as varchar), cast(null as integer), cast(null as integer), cast(null as bigint)
+          union all
+          select cast('park_a|2|2' as varchar), cast('park_a' as varchar), cast(9 as integer), cast(0 as integer), cast('2000-03-01' as date), cast('stall' as varchar), cast(null as integer), cast(null as integer), cast(7 as bigint)
+      - input: ref('dim_ride')
+        format: sql
+        rows: |
+          select cast('park_a|1|1' as varchar) as ride_key, cast('Wild Mouse' as varchar) as ride_name
+          union all
+          select cast('park_a|2|2' as varchar), cast('Burger Barn' as varchar)
+      - input: ref('dim_date')
+        format: sql
+        rows: |
+          select cast('2000-03-01' as date) as company_date, cast(2000 as integer) as company_year
+          union all
+          select cast('2000-03-02' as date), cast(2000 as integer)
+          union all
+          select cast('2000-03-03' as date), cast(2000 as integer)
+          union all
+          select cast('2000-04-01' as date), cast(2000 as integer)
+    expect:
+      rows:
+        - {ride_month_key: 'park_a|1|1|9|0', ride_key: 'park_a|1|1', park_id: park_a, ride_name: 'Wild Mouse', game_year: 9, game_month: 0, company_year: 2000, company_date: '2000-03-01', ride_days: 3, average_availability_from_downtime_pct: 85.00, longest_queue_seen_minutes: 9, riders: 10}
+        - {ride_month_key: 'park_a|1|1|9|1', ride_key: 'park_a|1|1', park_id: park_a, ride_name: 'Wild Mouse', game_year: 9, game_month: 1, company_year: 2000, company_date: '2000-04-01', ride_days: 1, average_availability_from_downtime_pct: null, longest_queue_seen_minutes: null, riders: null}

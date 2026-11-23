@@ -1,0 +1,358 @@
+version: 2
+
+models:
+  - name: stg_game_action
+    description: >-
+      Answers what the plugin saw the game do when an action hook fired, so action questions start from one
+      clean row per hook call, with the plugin's label kept beside the raw signals it came from. Grain: one row
+      per game_action event, kept once per event_id (the earliest delivery by received_at, _raw_file, _raw_line).
+      Key: event_id. Renames, casts and the conversion of the two money columns from tenths of a dollar to
+      dollars only; the label is the plugin's, and nothing here decides who issued an action. The envelope's game
+      date is the send date; an action's own date is in the action_ columns. The model has no unit and no clock
+      of its own; each column names its own.
+    meta:
+      contract_version: 1.8.0
+      expected_min_rows: 0
+    data_tests:
+      - repeat_delivery_payload_differs:
+          arguments:
+            source_relation: source('landing', 'game_action')
+    columns:
+      - name: schema_version
+        description: "Major version of the contract set; unit: count (always 1 here); no clock."
+        data_tests:
+          - not_null
+      - name: event_type
+        description: "Event kind (game_action here); text, no unit, no clock."
+        data_tests:
+          - not_null
+      - name: plugin_version
+        description: "Plugin build that sent the event; text version, no unit, no clock."
+        data_tests:
+          - not_null
+      - name: park_id
+        description: "Stable park identifier from park storage; text, no unit, no clock."
+        data_tests:
+          - not_null
+      - name: session_id
+        description: "Plugin start identifier, new on every start; text, no unit, no clock."
+        data_tests:
+          - not_null
+      - name: seq
+        description: "Order within the session across all event types, from 1; unit: count; no clock (session order, not a time)."
+        data_tests:
+          - not_null
+      - name: event_id
+        description: "session_id-seq; text, unique after the dedupe; no unit, no clock."
+        data_tests:
+          - not_null
+          - unique
+      - name: game_year
+        description: "In-game year, from 1; unit: year; clock: game calendar."
+        data_tests:
+          - not_null
+      - name: game_month
+        description: "In-game month, 0 to 7 (March = 0); unit: month; clock: game calendar."
+        data_tests:
+          - not_null
+      - name: game_day
+        description: "In-game day of the month, from 1; unit: day; clock: game calendar."
+        data_tests:
+          - not_null
+      - name: game_ticks_elapsed
+        description: "Game ticks since the park began; unit: game tick; clock: game."
+        data_tests:
+          - not_null
+      - name: emitted_at
+        description: "Producer time when the event was sent; unit: timestamp (UTC); clock: wall clock."
+        data_tests:
+          - not_null
+      - name: received_at
+        description: "Listener time when the line landed; unit: timestamp (UTC); clock: wall clock."
+        data_tests:
+          - not_null
+      - name: _raw_file
+        description: "Base name of the raw JSON Lines file the delivery came from, never a path; text, no unit, no clock."
+        data_tests:
+          - not_null
+      - name: _raw_line
+        description: "1-based physical line number of the delivery in that raw file, blank lines counted; unit: line number; no clock."
+        data_tests:
+          - not_null
+      - name: hook
+        description: "Which action hook fired: query (would the action succeed) or execute (the game runs it); text, no unit; clock: game, at the hook call."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [query, execute]
+      - name: action
+        description: "The game's name for the action, for example ridesetprice or ridesetstatus; plugin 0.8.0 and later send only business actions (ADR 0042), so build actions such as ridecreate appear only in rows from earlier plugins; text, no unit; clock: game, at the hook call."
+        data_tests:
+          - not_null
+      - name: action_label
+        description: "The plugin's label: preview when args_flags has bit 64 set, else prediction when is_client_only is true, else confirmed; text, no unit; clock: game, at the hook call."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [confirmed, preview, prediction]
+      - name: args_flags
+        description: "The arguments' flags integer as received; a bit set, no unit; clock: game, at the hook call. May be negative; null when the arguments carry no numeric flags."
+      - name: is_client_only
+        description: "The hook's isClientOnly value as received; true or false, no unit; clock: game, at the hook call."
+        data_tests:
+          - not_null
+      - name: player
+        description: "The hook's player value, unchanged; a whole number, no unit; clock: game, at the hook call."
+        data_tests:
+          - not_null
+      - name: type
+        description: "The hook's type value as received; a whole number, no unit; clock: game, at the hook call. Null when the hook gives none."
+      - name: args_json
+        description: "The hook's arguments as JSON text; text, no unit; clock: game, at the hook call."
+        data_tests:
+          - not_null
+      - name: args_ride
+        description: "The ride number in the arguments; a whole number, no unit; clock: game, at the hook call. Null when the arguments carry none."
+      - name: args_ride_type
+        description: "The ride type number in the arguments; a whole number, no unit; clock: game, at the hook call. Null when the arguments carry none."
+      - name: args_ride_object
+        description: "The ride object number in the arguments; a whole number, no unit; clock: game, at the hook call. Null when the arguments carry none."
+      - name: args_price_usd
+        description: "The price in the arguments in US dollars (decimal(18,2)), converted once from tenths of a dollar in this model; unit: US dollars; clock: game, at the hook call. Null when the arguments carry none."
+      - name: args_x
+        description: "The x coordinate in the arguments; unit: the action's own coordinate units; clock: game, at the hook call. Null when the arguments carry none."
+      - name: args_y
+        description: "The y coordinate in the arguments; unit: the action's own coordinate units; clock: game, at the hook call. Null when the arguments carry none."
+      - name: args_z
+        description: "The z coordinate in the arguments; unit: the action's own coordinate units; clock: game, at the hook call. Null when the arguments carry none."
+      - name: result_error
+        description: "The result's error code as received; a whole number, no unit; clock: game, at the hook call. Null when the result carries none; read null as no error."
+      - name: result_cost_usd
+        description: "The result's cost in US dollars (decimal(18,2)), converted once from tenths of a dollar in this model; unit: US dollars; clock: game, at the hook call. Null when the result carries none."
+      - name: result_ride
+        description: "The ride number the result returns; a whole number, no unit; clock: game, at the hook call. Null when the result carries none."
+      - name: action_at_ticks
+        description: "Game tick at which the hook fired; unit: game tick; clock: game."
+        data_tests:
+          - not_null
+      - name: action_game_year
+        description: "In-game year read inside the hook, from 1; unit: year; clock: game calendar. Use this, not game_year, for an action's date."
+        data_tests:
+          - not_null
+      - name: action_game_month
+        description: "In-game month read inside the hook, 0 to 7 (March = 0); unit: month; clock: game calendar."
+        data_tests:
+          - not_null
+      - name: action_game_day
+        description: "In-game day of the month read inside the hook, from 1; unit: day; clock: game calendar."
+        data_tests:
+          - not_null
+
+unit_tests:
+  - name: stg_game_action_keeps_first_delivery_and_converts_tenths_to_dollars
+    description: >-
+      It proves the lower _raw_line wins between two deliveries of one event_id, that the two tenths columns
+      become dollars once (1250 tenths is 125.00; -3000 is -300.00), and that a null price or cost stays null.
+    model: stg_game_action
+    given:
+      - input: source('landing', 'game_action')
+        format: sql
+        rows: |
+          select
+            cast(1 as integer) as schema_version,
+            cast('game_action' as varchar) as event_type,
+            cast('0.7.0' as varchar) as plugin_version,
+            cast('kpark1' as varchar) as park_id,
+            cast('s1' as varchar) as session_id,
+            cast(5 as bigint) as seq,
+            cast('s1-5' as varchar) as event_id,
+            cast(2 as integer) as game_year,
+            cast(3 as integer) as game_month,
+            cast(4 as integer) as game_day,
+            cast(5000 as bigint) as game_ticks_elapsed,
+            cast('2026-09-30 23:30:00+00' as timestamptz) as emitted_at,
+            cast('2026-09-30 23:31:00+00' as timestamptz) as received_at,
+            cast('a.jsonl' as varchar) as _raw_file,
+            cast(4 as bigint) as _raw_line,
+            cast('execute' as varchar) as hook,
+            cast('ridesetprice' as varchar) as action,
+            cast('preview' as varchar) as action_label,
+            cast(64 as bigint) as args_flags,
+            cast(true as boolean) as is_client_only,
+            cast(-1 as integer) as player,
+            cast(20 as integer) as type,
+            cast('{}' as varchar) as args_json,
+            cast(21 as integer) as args_ride,
+            cast(28 as integer) as args_ride_type,
+            cast(29 as integer) as args_ride_object,
+            cast(1250 as bigint) as args_price_tenths,
+            cast(10 as integer) as args_x,
+            cast(11 as integer) as args_y,
+            cast(12 as integer) as args_z,
+            cast(0 as integer) as result_error,
+            cast(-3000 as bigint) as result_cost_tenths,
+            cast(7 as integer) as result_ride,
+            cast(4995 as bigint) as action_at_ticks,
+            cast(1 as integer) as action_game_year,
+            cast(2 as integer) as action_game_month,
+            cast(3 as integer) as action_game_day
+          union all
+          select
+            cast(1 as integer) as schema_version,
+            cast('game_action' as varchar) as event_type,
+            cast('0.7.0' as varchar) as plugin_version,
+            cast('kpark1' as varchar) as park_id,
+            cast('s1' as varchar) as session_id,
+            cast(5 as bigint) as seq,
+            cast('s1-5' as varchar) as event_id,
+            cast(2 as integer) as game_year,
+            cast(3 as integer) as game_month,
+            cast(4 as integer) as game_day,
+            cast(5000 as bigint) as game_ticks_elapsed,
+            cast('2026-09-30 23:30:00+00' as timestamptz) as emitted_at,
+            cast('2026-09-30 23:31:00+00' as timestamptz) as received_at,
+            cast('a.jsonl' as varchar) as _raw_file,
+            cast(9 as bigint) as _raw_line,
+            cast('execute' as varchar) as hook,
+            cast('ridesetprice' as varchar) as action,
+            cast('preview' as varchar) as action_label,
+            cast(64 as bigint) as args_flags,
+            cast(true as boolean) as is_client_only,
+            cast(-1 as integer) as player,
+            cast(20 as integer) as type,
+            cast('{}' as varchar) as args_json,
+            cast(21 as integer) as args_ride,
+            cast(28 as integer) as args_ride_type,
+            cast(29 as integer) as args_ride_object,
+            cast(999 as bigint) as args_price_tenths,
+            cast(10 as integer) as args_x,
+            cast(11 as integer) as args_y,
+            cast(12 as integer) as args_z,
+            cast(0 as integer) as result_error,
+            cast(111 as bigint) as result_cost_tenths,
+            cast(7 as integer) as result_ride,
+            cast(4995 as bigint) as action_at_ticks,
+            cast(1 as integer) as action_game_year,
+            cast(2 as integer) as action_game_month,
+            cast(3 as integer) as action_game_day
+          union all
+          select
+            cast(1 as integer) as schema_version,
+            cast('game_action' as varchar) as event_type,
+            cast('0.7.0' as varchar) as plugin_version,
+            cast('kpark1' as varchar) as park_id,
+            cast('s1' as varchar) as session_id,
+            cast(6 as bigint) as seq,
+            cast('s1-6' as varchar) as event_id,
+            cast(2 as integer) as game_year,
+            cast(3 as integer) as game_month,
+            cast(4 as integer) as game_day,
+            cast(6000 as bigint) as game_ticks_elapsed,
+            cast('2026-09-30 23:30:00+00' as timestamptz) as emitted_at,
+            cast('2026-09-30 23:32:00+00' as timestamptz) as received_at,
+            cast('a.jsonl' as varchar) as _raw_file,
+            cast(2 as bigint) as _raw_line,
+            cast('execute' as varchar) as hook,
+            cast('ridesetprice' as varchar) as action,
+            cast('confirmed' as varchar) as action_label,
+            cast(null as bigint) as args_flags,
+            cast(false as boolean) as is_client_only,
+            cast(-1 as integer) as player,
+            cast(20 as integer) as type,
+            cast('{}' as varchar) as args_json,
+            cast(21 as integer) as args_ride,
+            cast(null as integer) as args_ride_type,
+            cast(null as integer) as args_ride_object,
+            cast(null as bigint) as args_price_tenths,
+            cast(null as integer) as args_x,
+            cast(null as integer) as args_y,
+            cast(null as integer) as args_z,
+            cast(null as integer) as result_error,
+            cast(null as bigint) as result_cost_tenths,
+            cast(null as integer) as result_ride,
+            cast(5995 as bigint) as action_at_ticks,
+            cast(1 as integer) as action_game_year,
+            cast(2 as integer) as action_game_month,
+            cast(3 as integer) as action_game_day
+    expect:
+      format: sql
+      rows: |
+        select
+          cast(1 as integer) as schema_version,
+          cast('game_action' as varchar) as event_type,
+          cast('0.7.0' as varchar) as plugin_version,
+          cast('kpark1' as varchar) as park_id,
+          cast('s1' as varchar) as session_id,
+          cast(5 as bigint) as seq,
+          cast('s1-5' as varchar) as event_id,
+          cast(2 as integer) as game_year,
+          cast(3 as integer) as game_month,
+          cast(4 as integer) as game_day,
+          cast(5000 as bigint) as game_ticks_elapsed,
+          cast('2026-09-30 23:30:00+00' as timestamptz) as emitted_at,
+          cast('2026-09-30 23:31:00+00' as timestamptz) as received_at,
+          cast('a.jsonl' as varchar) as _raw_file,
+          cast(4 as bigint) as _raw_line,
+          cast('execute' as varchar) as hook,
+          cast('ridesetprice' as varchar) as action,
+          cast('preview' as varchar) as action_label,
+          cast(64 as bigint) as args_flags,
+          cast(true as boolean) as is_client_only,
+          cast(-1 as integer) as player,
+          cast(20 as integer) as type,
+          cast('{}' as varchar) as args_json,
+          cast(21 as integer) as args_ride,
+          cast(28 as integer) as args_ride_type,
+          cast(29 as integer) as args_ride_object,
+          cast(125.00 as decimal(18,2)) as args_price_usd,
+          cast(10 as integer) as args_x,
+          cast(11 as integer) as args_y,
+          cast(12 as integer) as args_z,
+          cast(0 as integer) as result_error,
+          cast(-300.00 as decimal(18,2)) as result_cost_usd,
+          cast(7 as integer) as result_ride,
+          cast(4995 as bigint) as action_at_ticks,
+          cast(1 as integer) as action_game_year,
+          cast(2 as integer) as action_game_month,
+          cast(3 as integer) as action_game_day
+        union all
+        select
+          cast(1 as integer) as schema_version,
+          cast('game_action' as varchar) as event_type,
+          cast('0.7.0' as varchar) as plugin_version,
+          cast('kpark1' as varchar) as park_id,
+          cast('s1' as varchar) as session_id,
+          cast(6 as bigint) as seq,
+          cast('s1-6' as varchar) as event_id,
+          cast(2 as integer) as game_year,
+          cast(3 as integer) as game_month,
+          cast(4 as integer) as game_day,
+          cast(6000 as bigint) as game_ticks_elapsed,
+          cast('2026-09-30 23:30:00+00' as timestamptz) as emitted_at,
+          cast('2026-09-30 23:32:00+00' as timestamptz) as received_at,
+          cast('a.jsonl' as varchar) as _raw_file,
+          cast(2 as bigint) as _raw_line,
+          cast('execute' as varchar) as hook,
+          cast('ridesetprice' as varchar) as action,
+          cast('confirmed' as varchar) as action_label,
+          cast(null as bigint) as args_flags,
+          cast(false as boolean) as is_client_only,
+          cast(-1 as integer) as player,
+          cast(20 as integer) as type,
+          cast('{}' as varchar) as args_json,
+          cast(21 as integer) as args_ride,
+          cast(null as integer) as args_ride_type,
+          cast(null as integer) as args_ride_object,
+          cast(null as decimal(18,2)) as args_price_usd,
+          cast(null as integer) as args_x,
+          cast(null as integer) as args_y,
+          cast(null as integer) as args_z,
+          cast(null as integer) as result_error,
+          cast(null as decimal(18,2)) as result_cost_usd,
+          cast(null as integer) as result_ride,
+          cast(5995 as bigint) as action_at_ticks,
+          cast(1 as integer) as action_game_year,
+          cast(2 as integer) as action_game_month,
+          cast(3 as integer) as action_game_day

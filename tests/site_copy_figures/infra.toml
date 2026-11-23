@@ -1,0 +1,3 @@
+# Numbers the infrastructure section (#infra) shows as plain copy, outside any figure region
+# ("Numbers kept as copy" in docs/ai-dlc/specs/site-mockup-port.md). The section keeps none: the
+# data-stack numbers (K9 to K13) belong to the "How it was built" section's file, built.toml.

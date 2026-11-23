@@ -1,0 +1,227 @@
+version: 2
+
+models:
+  - name: stg_envelope
+    description: >-
+      Answers how many events landed, of which type, in which session and when, so the counting
+      models can be checked against what the listener received. Grain: one row per landed delivery
+      of any event type, with no dedupe, so an event delivered twice is two rows. Key: none on
+      event_id, because a repeat delivery repeats it; a delivery is told apart by _raw_file and
+      _raw_line. It holds only the envelope columns shared by every event type; no unit, no clock.
+    meta:
+      contract_version: 1.8.0
+      expected_min_rows: 1
+    data_tests:
+      - repeat_delivery_payload_differs:
+          arguments:
+            source_relation: source('landing', 'plugin_stats')
+      - repeat_delivery_payload_differs:
+          arguments:
+            source_relation: source('landing', 'weather_change')
+    columns:
+      - name: schema_version
+        description: "Major version of the contract set; unit: count (always 1 here); no clock."
+        data_tests:
+          - not_null
+      - name: event_type
+        description: "Event kind, one of the 13 contracted event types; text, no unit, no clock."
+        data_tests:
+          - not_null
+      - name: plugin_version
+        description: "Plugin build that sent the event; text version, no unit, no clock."
+        data_tests:
+          - not_null
+      - name: park_id
+        description: "Stable park identifier from park storage; text, no unit, no clock."
+        data_tests:
+          - not_null
+      - name: session_id
+        description: "Plugin start identifier, new on every start; text, no unit, no clock."
+        data_tests:
+          - not_null
+      - name: seq
+        description: "Order within the session across all event types, from 1; unit: count; no clock (session order, not a time)."
+        data_tests:
+          - not_null
+      - name: event_id
+        description: "session_id-seq; text, repeated when the same event landed more than once; no unit, no clock."
+        data_tests:
+          - not_null
+      - name: game_year
+        description: "In-game year, from 1; unit: year; clock: game calendar."
+        data_tests:
+          - not_null
+      - name: game_month
+        description: "In-game month, 0 to 7 (March = 0); unit: month; clock: game calendar."
+        data_tests:
+          - not_null
+      - name: game_day
+        description: "In-game day of the month, from 1; unit: day; clock: game calendar."
+        data_tests:
+          - not_null
+      - name: game_ticks_elapsed
+        description: "Game ticks since the park began; unit: game tick; clock: game."
+        data_tests:
+          - not_null
+      - name: emitted_at
+        description: "Producer time when the event was sent; unit: timestamp (UTC); clock: wall clock."
+        data_tests:
+          - not_null
+      - name: received_at
+        description: "Listener time when the line landed; unit: timestamp (UTC); clock: wall clock."
+        data_tests:
+          - not_null
+      - name: _raw_file
+        description: "Base name of the raw JSON Lines file the delivery came from, never a path; text, no unit, no clock."
+        data_tests:
+          - not_null
+      - name: _raw_line
+        description: "1-based physical line number of the delivery in that raw file, blank lines counted; unit: line number; no clock."
+        data_tests:
+          - not_null
+
+unit_tests:
+  - name: stg_envelope_keeps_repeat_deliveries
+    description: It proves a repeat delivery of one event_id stays two rows and other event types pass through, so the envelope does not dedupe.
+    model: stg_envelope
+    given:
+      - input: source('landing', 'finance_month')
+        format: sql
+        rows: |
+          select
+            cast(1 as integer) as schema_version, cast('finance_month' as varchar) as event_type, cast('0.3.0' as varchar) as plugin_version,
+            cast('kpark1' as varchar) as park_id, cast('s1' as varchar) as session_id, cast(1 as bigint) as seq, cast('s1-1' as varchar) as event_id,
+            cast(2 as integer) as game_year, cast(3 as integer) as game_month, cast(4 as integer) as game_day, cast(1000 as bigint) as game_ticks_elapsed,
+            cast('2026-09-30 23:30:00+00' as timestamptz) as emitted_at, cast('2026-09-30 23:31:00+00' as timestamptz) as received_at,
+            cast('a.jsonl' as varchar) as _raw_file, cast(1 as bigint) as _raw_line
+          where false
+      - input: source('landing', 'game_action')
+        format: sql
+        rows: |
+          select
+            cast(1 as integer) as schema_version, cast('game_action' as varchar) as event_type, cast('0.7.0' as varchar) as plugin_version,
+            cast('kpark1' as varchar) as park_id, cast('s1' as varchar) as session_id, cast(9 as bigint) as seq, cast('s1-9' as varchar) as event_id,
+            cast(2 as integer) as game_year, cast(3 as integer) as game_month, cast(4 as integer) as game_day, cast(9*1000 as bigint) as game_ticks_elapsed,
+            cast('2026-09-30 23:30:00+00' as timestamptz) as emitted_at, cast('2026-09-30 23:31:00+00' as timestamptz) as received_at,
+            cast('a.jsonl' as varchar) as _raw_file, cast(6 as bigint) as _raw_line
+      - input: source('landing', 'guest_arrived')
+        format: sql
+        rows: |
+          select
+            cast(1 as integer) as schema_version, cast('guest_arrived' as varchar) as event_type, cast('0.3.0' as varchar) as plugin_version,
+            cast('kpark1' as varchar) as park_id, cast('s1' as varchar) as session_id, cast(5 as bigint) as seq, cast('s1-5' as varchar) as event_id,
+            cast(2 as integer) as game_year, cast(3 as integer) as game_month, cast(4 as integer) as game_day, cast(5*1000 as bigint) as game_ticks_elapsed,
+            cast('2026-09-30 23:30:00+00' as timestamptz) as emitted_at, cast('2026-09-30 23:31:00+00' as timestamptz) as received_at,
+            cast('a.jsonl' as varchar) as _raw_file, cast(1 as bigint) as _raw_line
+          union all
+          select
+            cast(1 as integer) as schema_version, cast('guest_arrived' as varchar) as event_type, cast('0.3.0' as varchar) as plugin_version,
+            cast('kpark1' as varchar) as park_id, cast('s1' as varchar) as session_id, cast(5 as bigint) as seq, cast('s1-5' as varchar) as event_id,
+            cast(2 as integer) as game_year, cast(3 as integer) as game_month, cast(4 as integer) as game_day, cast(5*1000 as bigint) as game_ticks_elapsed,
+            cast('2026-09-30 23:30:00+00' as timestamptz) as emitted_at, cast('2026-09-30 23:31:00+00' as timestamptz) as received_at,
+            cast('a.jsonl' as varchar) as _raw_file, cast(2 as bigint) as _raw_line
+      - input: source('landing', 'guest_boarded')
+        format: sql
+        rows: |
+          select
+            cast(1 as integer) as schema_version, cast('guest_boarded' as varchar) as event_type, cast('0.3.0' as varchar) as plugin_version,
+            cast('kpark1' as varchar) as park_id, cast('s1' as varchar) as session_id, cast(1 as bigint) as seq, cast('s1-1' as varchar) as event_id,
+            cast(2 as integer) as game_year, cast(3 as integer) as game_month, cast(4 as integer) as game_day, cast(1000 as bigint) as game_ticks_elapsed,
+            cast('2026-09-30 23:30:00+00' as timestamptz) as emitted_at, cast('2026-09-30 23:31:00+00' as timestamptz) as received_at,
+            cast('a.jsonl' as varchar) as _raw_file, cast(1 as bigint) as _raw_line
+          where false
+      - input: source('landing', 'guest_left')
+        format: sql
+        rows: |
+          select
+            cast(1 as integer) as schema_version, cast('guest_left' as varchar) as event_type, cast('0.3.0' as varchar) as plugin_version,
+            cast('kpark1' as varchar) as park_id, cast('s1' as varchar) as session_id, cast(1 as bigint) as seq, cast('s1-1' as varchar) as event_id,
+            cast(2 as integer) as game_year, cast(3 as integer) as game_month, cast(4 as integer) as game_day, cast(1000 as bigint) as game_ticks_elapsed,
+            cast('2026-09-30 23:30:00+00' as timestamptz) as emitted_at, cast('2026-09-30 23:31:00+00' as timestamptz) as received_at,
+            cast('a.jsonl' as varchar) as _raw_file, cast(1 as bigint) as _raw_line
+          where false
+      - input: source('landing', 'guest_refused')
+        format: sql
+        rows: |
+          select
+            cast(1 as integer) as schema_version, cast('guest_refused' as varchar) as event_type, cast('0.3.0' as varchar) as plugin_version,
+            cast('kpark1' as varchar) as park_id, cast('s1' as varchar) as session_id, cast(1 as bigint) as seq, cast('s1-1' as varchar) as event_id,
+            cast(2 as integer) as game_year, cast(3 as integer) as game_month, cast(4 as integer) as game_day, cast(1000 as bigint) as game_ticks_elapsed,
+            cast('2026-09-30 23:30:00+00' as timestamptz) as emitted_at, cast('2026-09-30 23:31:00+00' as timestamptz) as received_at,
+            cast('a.jsonl' as varchar) as _raw_file, cast(1 as bigint) as _raw_line
+          where false
+      - input: source('landing', 'guest_snapshot')
+        format: sql
+        rows: |
+          select
+            cast(1 as integer) as schema_version, cast('guest_snapshot' as varchar) as event_type, cast('0.3.0' as varchar) as plugin_version,
+            cast('kpark1' as varchar) as park_id, cast('s1' as varchar) as session_id, cast(1 as bigint) as seq, cast('s1-1' as varchar) as event_id,
+            cast(2 as integer) as game_year, cast(3 as integer) as game_month, cast(4 as integer) as game_day, cast(1000 as bigint) as game_ticks_elapsed,
+            cast('2026-09-30 23:30:00+00' as timestamptz) as emitted_at, cast('2026-09-30 23:31:00+00' as timestamptz) as received_at,
+            cast('a.jsonl' as varchar) as _raw_file, cast(1 as bigint) as _raw_line
+          where false
+      - input: source('landing', 'park_snapshot')
+        format: sql
+        rows: |
+          select
+            cast(1 as integer) as schema_version, cast('park_snapshot' as varchar) as event_type, cast('0.3.0' as varchar) as plugin_version,
+            cast('kpark1' as varchar) as park_id, cast('s1' as varchar) as session_id, cast(1 as bigint) as seq, cast('s1-1' as varchar) as event_id,
+            cast(2 as integer) as game_year, cast(3 as integer) as game_month, cast(4 as integer) as game_day, cast(1000 as bigint) as game_ticks_elapsed,
+            cast('2026-09-30 23:30:00+00' as timestamptz) as emitted_at, cast('2026-09-30 23:31:00+00' as timestamptz) as received_at,
+            cast('a.jsonl' as varchar) as _raw_file, cast(1 as bigint) as _raw_line
+          where false
+      - input: source('landing', 'plugin_stats')
+        format: sql
+        rows: |
+          select
+            cast(1 as integer) as schema_version, cast('plugin_stats' as varchar) as event_type, cast('0.3.0' as varchar) as plugin_version,
+            cast('kpark1' as varchar) as park_id, cast('s1' as varchar) as session_id, cast(1 as bigint) as seq, cast('s1-1' as varchar) as event_id,
+            cast(2 as integer) as game_year, cast(3 as integer) as game_month, cast(4 as integer) as game_day, cast(1000 as bigint) as game_ticks_elapsed,
+            cast('2026-09-30 23:30:00+00' as timestamptz) as emitted_at, cast('2026-09-30 23:31:00+00' as timestamptz) as received_at,
+            cast('a.jsonl' as varchar) as _raw_file, cast(1 as bigint) as _raw_line
+          where false
+      - input: source('landing', 'ride_snapshot')
+        format: sql
+        rows: |
+          select
+            cast(1 as integer) as schema_version, cast('ride_snapshot' as varchar) as event_type, cast('0.3.0' as varchar) as plugin_version,
+            cast('kpark1' as varchar) as park_id, cast('s1' as varchar) as session_id, cast(6 as bigint) as seq, cast('s1-6' as varchar) as event_id,
+            cast(2 as integer) as game_year, cast(3 as integer) as game_month, cast(4 as integer) as game_day, cast(6*1000 as bigint) as game_ticks_elapsed,
+            cast('2026-09-30 23:30:00+00' as timestamptz) as emitted_at, cast('2026-09-30 23:31:00+00' as timestamptz) as received_at,
+            cast('a.jsonl' as varchar) as _raw_file, cast(3 as bigint) as _raw_line
+      - input: source('landing', 'save_written')
+        format: sql
+        rows: |
+          select
+            cast(1 as integer) as schema_version, cast('save_written' as varchar) as event_type, cast('0.3.0' as varchar) as plugin_version,
+            cast('kpark1' as varchar) as park_id, cast('s1' as varchar) as session_id, cast(7 as bigint) as seq, cast('s1-7' as varchar) as event_id,
+            cast(2 as integer) as game_year, cast(3 as integer) as game_month, cast(4 as integer) as game_day, cast(7*1000 as bigint) as game_ticks_elapsed,
+            cast('2026-09-30 23:30:00+00' as timestamptz) as emitted_at, cast('2026-09-30 23:31:00+00' as timestamptz) as received_at,
+            cast('a.jsonl' as varchar) as _raw_file, cast(4 as bigint) as _raw_line
+      - input: source('landing', 'session_start')
+        format: sql
+        rows: |
+          select
+            cast(1 as integer) as schema_version, cast('session_start' as varchar) as event_type, cast('0.3.0' as varchar) as plugin_version,
+            cast('kpark1' as varchar) as park_id, cast('s1' as varchar) as session_id, cast(1 as bigint) as seq, cast('s1-1' as varchar) as event_id,
+            cast(2 as integer) as game_year, cast(3 as integer) as game_month, cast(4 as integer) as game_day, cast(1000 as bigint) as game_ticks_elapsed,
+            cast('2026-09-30 23:30:00+00' as timestamptz) as emitted_at, cast('2026-09-30 23:31:00+00' as timestamptz) as received_at,
+            cast('a.jsonl' as varchar) as _raw_file, cast(1 as bigint) as _raw_line
+          where false
+      - input: source('landing', 'weather_change')
+        format: sql
+        rows: |
+          select
+            cast(1 as integer) as schema_version, cast('weather_change' as varchar) as event_type, cast('0.5.0' as varchar) as plugin_version,
+            cast('kpark1' as varchar) as park_id, cast('s1' as varchar) as session_id, cast(8 as bigint) as seq, cast('s1-8' as varchar) as event_id,
+            cast(2 as integer) as game_year, cast(3 as integer) as game_month, cast(4 as integer) as game_day, cast(8*1000 as bigint) as game_ticks_elapsed,
+            cast('2026-09-30 23:30:00+00' as timestamptz) as emitted_at, cast('2026-09-30 23:31:00+00' as timestamptz) as received_at,
+            cast('a.jsonl' as varchar) as _raw_file, cast(5 as bigint) as _raw_line
+    expect:
+      rows:
+      - {schema_version: 1, event_type: guest_arrived, plugin_version: 0.3.0, park_id: kpark1, session_id: s1, seq: 5, event_id: s1-5, game_year: 2, game_month: 3, game_day: 4, game_ticks_elapsed: 5000, emitted_at: '2026-09-30 23:30:00+00', received_at: '2026-09-30 23:31:00+00', _raw_file: a.jsonl, _raw_line: 1}
+      - {schema_version: 1, event_type: guest_arrived, plugin_version: 0.3.0, park_id: kpark1, session_id: s1, seq: 5, event_id: s1-5, game_year: 2, game_month: 3, game_day: 4, game_ticks_elapsed: 5000, emitted_at: '2026-09-30 23:30:00+00', received_at: '2026-09-30 23:31:00+00', _raw_file: a.jsonl, _raw_line: 2}
+      - {schema_version: 1, event_type: ride_snapshot, plugin_version: 0.3.0, park_id: kpark1, session_id: s1, seq: 6, event_id: s1-6, game_year: 2, game_month: 3, game_day: 4, game_ticks_elapsed: 6000, emitted_at: '2026-09-30 23:30:00+00', received_at: '2026-09-30 23:31:00+00', _raw_file: a.jsonl, _raw_line: 3}
+      - {schema_version: 1, event_type: save_written, plugin_version: 0.3.0, park_id: kpark1, session_id: s1, seq: 7, event_id: s1-7, game_year: 2, game_month: 3, game_day: 4, game_ticks_elapsed: 7000, emitted_at: '2026-09-30 23:30:00+00', received_at: '2026-09-30 23:31:00+00', _raw_file: a.jsonl, _raw_line: 4}
+      - {schema_version: 1, event_type: weather_change, plugin_version: 0.5.0, park_id: kpark1, session_id: s1, seq: 8, event_id: s1-8, game_year: 2, game_month: 3, game_day: 4, game_ticks_elapsed: 8000, emitted_at: '2026-09-30 23:30:00+00', received_at: '2026-09-30 23:31:00+00', _raw_file: a.jsonl, _raw_line: 5}
+      - {schema_version: 1, event_type: game_action, plugin_version: 0.7.0, park_id: kpark1, session_id: s1, seq: 9, event_id: s1-9, game_year: 2, game_month: 3, game_day: 4, game_ticks_elapsed: 9000, emitted_at: '2026-09-30 23:30:00+00', received_at: '2026-09-30 23:31:00+00', _raw_file: a.jsonl, _raw_line: 6}

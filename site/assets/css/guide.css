@@ -1,0 +1,24 @@
+/* The player guide page: its frame, the three-part install step, numbered lists, screen blocks and tables. */
+.guide-head{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:var(--s3) var(--s5);padding-block:var(--s6) var(--s4)}
+.guide-head h1{font-size:var(--fs-4)}
+.guide-home{font-weight:700}
+.guide{padding-block:var(--s5) var(--s8);display:grid;gap:var(--s6)}
+.guide > *{max-width:68ch}
+.guide-lead{font-size:var(--fs-2);line-height:1.45}
+.guide section{display:grid;gap:var(--s3)}
+.guide h2{font-size:var(--fs-3)}
+.guide section section h2{font-size:var(--fs-2)}
+.guide h3{font-size:var(--fs-1);font-weight:700}
+.guide ul{display:grid;gap:var(--s2);padding-left:var(--s5);list-style:disc}
+.guide ol{display:grid;gap:var(--s2);padding-left:var(--s5);list-style:decimal}
+.guide pre{margin:0;padding:var(--s3) var(--s4);background:var(--inset);border:1px solid var(--line-strong);border-radius:var(--r2);overflow-x:auto}
+.guide pre code{background:none;border:0;padding:0;font-size:var(--fs-1)}
+.guide table{border-collapse:collapse;width:100%}
+.guide th,.guide td{text-align:left;vertical-align:top;padding:var(--s2) var(--s3);border-bottom:1px solid var(--line)}
+.guide th{font-weight:700;border-bottom-color:var(--line-strong)}
+.guide-step,.guide-sign-in{background:var(--surface);border:1px solid var(--line);border-radius:var(--r2);padding:var(--s4) var(--s5)}
+.step-command{display:block;margin:0;padding:var(--s3) var(--s4);background:var(--inset);border:1px solid var(--line-strong);border-radius:var(--r2);overflow-x:auto}
+.step-command pre{padding:0;border:0;background:none;border-radius:0}
+.step-command code{background:none;border:0;padding:0;font-size:var(--fs-1);overflow-wrap:anywhere}
+.step-see{color:var(--ink)}
+.step-fix{color:var(--muted);border-left:3px solid var(--line-strong);padding-left:var(--s3)}

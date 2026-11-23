@@ -1,0 +1,170 @@
+version: 2
+
+models:
+  - name: fct_park_month
+    description: >-
+      Answers the question, “how much did each park earn from running in each company month, and do its books balance?”
+      Grain: one row per park and closed game month on the kept timeline (one monthly statement), dated by the
+      statement's own month, never by the day-1 event that carried it. Key: park_month_key. The month's operating
+      profit, capital spending and the change in cash less loan, less the money already booked to the new month,
+      since the park's previous kept statement sit side by side, so a singular test can tie them exactly and see a missing month. The model's unit is US dollars (unit: US dollars);
+      clock: company date (month) for the mart, game calendar for the statement month and the balances.
+    config:
+      contract:
+        enforced: true
+    meta:
+      expected_min_rows: 1
+    data_tests:
+      - rows_on_sample:
+          arguments:
+            expected: 3
+    columns:
+      - name: park_month_key
+        data_type: varchar
+        description: "Key: park_id, statement_year and statement_month joined by a pipe, built from the game statement month and not the company date; text; no unit; no clock."
+        data_tests:
+          - unique
+          - not_null
+      - name: park_id
+        data_type: varchar
+        description: "Stable park identifier from park storage; text; no unit; no clock."
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_park')
+                field: park_id
+      - name: statement_year
+        data_type: integer
+        description: "Game year of the closed month, from 1; unit: year; clock: game calendar."
+      - name: statement_month
+        data_type: integer
+        description: "Game month that closed, 0 to 7 (March = 0); unit: month; clock: game calendar."
+      - name: company_year
+        data_type: integer
+        description: "The company year the statement closes in, carried from int_statements__labeled; unit: year; clock: company date (year)."
+        data_tests: [not_null]
+      - name: statement_company_date
+        data_type: date
+        description: "First day of the company month the statement closes, the mart's clock; no unit; clock: company date."
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: company_date
+      - name: ride_construction_usd
+        data_type: decimal(18,2)
+        description: "The closed game month's ride construction total in US dollars (decimal(18,2)); income positive and spending negative; unit: US dollars; clock: game calendar month (the statement month)."
+      - name: ride_runningcosts_usd
+        data_type: decimal(18,2)
+        description: "The closed game month's ride runningcosts total in US dollars (decimal(18,2)); income positive and spending negative; unit: US dollars; clock: game calendar month (the statement month)."
+      - name: land_purchase_usd
+        data_type: decimal(18,2)
+        description: "The closed game month's land purchase total in US dollars (decimal(18,2)); income positive and spending negative; unit: US dollars; clock: game calendar month (the statement month)."
+      - name: landscaping_usd
+        data_type: decimal(18,2)
+        description: "The closed game month's landscaping total in US dollars (decimal(18,2)); income positive and spending negative; unit: US dollars; clock: game calendar month (the statement month)."
+      - name: park_entrance_tickets_usd
+        data_type: decimal(18,2)
+        description: "The closed game month's park entrance tickets total in US dollars (decimal(18,2)); income positive and spending negative; unit: US dollars; clock: game calendar month (the statement month)."
+      - name: park_ride_tickets_usd
+        data_type: decimal(18,2)
+        description: "The closed game month's park ride tickets total in US dollars (decimal(18,2)); income positive and spending negative; unit: US dollars; clock: game calendar month (the statement month)."
+      - name: shop_sales_usd
+        data_type: decimal(18,2)
+        description: "The closed game month's shop sales total in US dollars (decimal(18,2)); income positive and spending negative; unit: US dollars; clock: game calendar month (the statement month)."
+      - name: shop_stock_usd
+        data_type: decimal(18,2)
+        description: "The closed game month's shop stock total in US dollars (decimal(18,2)); income positive and spending negative; unit: US dollars; clock: game calendar month (the statement month)."
+      - name: food_drink_sales_usd
+        data_type: decimal(18,2)
+        description: "The closed game month's food drink sales total in US dollars (decimal(18,2)); income positive and spending negative; unit: US dollars; clock: game calendar month (the statement month)."
+      - name: food_drink_stock_usd
+        data_type: decimal(18,2)
+        description: "The closed game month's food drink stock total in US dollars (decimal(18,2)); income positive and spending negative; unit: US dollars; clock: game calendar month (the statement month)."
+      - name: wages_usd
+        data_type: decimal(18,2)
+        description: "The closed game month's wages total in US dollars (decimal(18,2)); income positive and spending negative; unit: US dollars; clock: game calendar month (the statement month)."
+      - name: marketing_usd
+        data_type: decimal(18,2)
+        description: "The closed game month's marketing total in US dollars (decimal(18,2)); income positive and spending negative; unit: US dollars; clock: game calendar month (the statement month)."
+      - name: research_usd
+        data_type: decimal(18,2)
+        description: "The closed game month's research total in US dollars (decimal(18,2)); income positive and spending negative; unit: US dollars; clock: game calendar month (the statement month)."
+      - name: interest_usd
+        data_type: decimal(18,2)
+        description: "The closed game month's interest total in US dollars (decimal(18,2)); income positive and spending negative; unit: US dollars; clock: game calendar month (the statement month)."
+        data_tests: [not_null]
+      - name: cash_usd
+        data_type: decimal(18,2)
+        description: "Park cash in US dollars (decimal(18,2)) at the reading, the day-1 callback of the month after the statement month, which runs at the end of that month's first tick, so it can include the money already booked to the new month (new_month_booked_usd); unit: US dollars; clock: game calendar."
+        data_tests: [not_null]
+      - name: bank_loan_usd
+        data_type: decimal(18,2)
+        description: "Bank loan outstanding in US dollars (decimal(18,2)) at the reading, the day-1 callback of the month after the statement month, which runs at the end of that month's first tick, so it can include the money already booked to the new month (new_month_booked_usd); unit: US dollars; clock: game calendar."
+        data_tests: [not_null]
+      - name: new_month_booked_usd
+        data_type: decimal(18,2)
+        description: "The money already booked to the new month when the statement was read, in US dollars (decimal(18,2)); 0 for statements from plugins before 0.6.0, which do not send it, so 0 does not tell sent-as-0 from not sent (plugin_version in stg_finance_month does); unit: US dollars; clock: game calendar."
+        data_tests: [not_null]
+      - name: months_since_previous_statement
+        data_type: integer
+        description: "Game months since the park's previous kept statement, 1 when no month is missing; null for the park's first kept statement; unit: game months; clock: game calendar."
+      - name: net_cash_change_usd
+        data_type: decimal(18,2)
+        description: "The change in cash less loan less the money already booked to the new month (new_month_booked_usd) since the park's previous kept statement, in US dollars (decimal(18,2)); null for the park's first kept statement; unit: US dollars; clock: company date (month)."
+      - name: operating_profit
+        data_type: decimal(18,2)
+        description: "The catalog metric operating_profit per park per company month, in US dollars (decimal(18,2)): the ten operating lines summed, costs negative; unit: US dollars; clock: company date (month)."
+        data_tests: [not_null]
+      - name: capital_spending
+        data_type: decimal(18,2)
+        description: "The catalog metric capital_spending, in US dollars (decimal(18,2)): ride construction, land purchase and landscaping, outside operating profit; unit: US dollars; clock: company date (month)."
+        data_tests: [not_null]
+
+unit_tests:
+  - name: fct_park_month_keeps_the_kept_timeline_and_computes_the_previous_statement_columns
+    description: >-
+      It proves that given park_a with kept months 0, 1 and 2, an abandoned copy of month 1 and an abandoned month 3,
+      park_b with one kept month, and park_c with kept months 0 and 2 only, the abandoned rows give no output row,
+      month 2 of park_a is compared with its kept month 1 (whose loan is not zero), a park's first kept month has null
+      gap and null cash change, park_c month 2 has a gap of 2 although its cash change equals its operating profit,
+      and every one of the ten operating lines is non-zero in a row, so dropping one changes an expected profit.
+      The booked amount is subtracted at both ends of a pair: park_a month 1 has a value and its earlier statement is
+      null (counted as 0), and month 2 has values at both ends; parks b, c and d have null on every statement, so
+      park_c month 2 keeps the change it had before the field existed.
+    model: fct_park_month
+    given:
+      - input: ref('int_statements__labeled')
+        format: sql
+        rows: |
+          select cast('park_a' as varchar) as park_id, cast(9 as integer) as statement_year, cast(0 as integer) as statement_month, cast(2000 as integer) as company_year, cast('2000-03-01' as date) as statement_company_date, cast(-13.37 as decimal(18,2)) as ride_construction_usd, cast(-26.74 as decimal(18,2)) as ride_runningcosts_usd, cast(-40.11 as decimal(18,2)) as land_purchase_usd, cast(-53.48 as decimal(18,2)) as landscaping_usd, cast(66.85 as decimal(18,2)) as park_entrance_tickets_usd, cast(80.22 as decimal(18,2)) as park_ride_tickets_usd, cast(93.59 as decimal(18,2)) as shop_sales_usd, cast(-106.96 as decimal(18,2)) as shop_stock_usd, cast(120.33 as decimal(18,2)) as food_drink_sales_usd, cast(-133.70 as decimal(18,2)) as food_drink_stock_usd, cast(-147.07 as decimal(18,2)) as wages_usd, cast(-160.44 as decimal(18,2)) as marketing_usd, cast(-173.81 as decimal(18,2)) as research_usd, cast(-187.18 as decimal(18,2)) as interest_usd, cast(1000.25 as decimal(18,2)) as cash_usd, cast(0 as decimal(18,2)) as bank_loan_usd, cast(null as decimal(18,2)) as new_month_booked_usd, cast('kept' as varchar) as timeline_status
+          union all
+          select 'park_a', 9, 1, 2000, '2000-04-01', -200.55, -213.92, -227.29, -240.66, 254.03, 267.40, 280.77, -294.14, 307.51, -320.88, -334.25, -347.62, -360.99, -374.36, 2500.50, 1000.00, cast(20.00 as decimal(18,2)), 'kept'
+          union all
+          select 'park_a', 9, 1, 2000, '2000-04-01', -387.73, -401.10, -414.47, -427.84, 441.21, 454.58, 467.95, -481.32, 494.69, -508.06, -521.43, -534.80, -548.17, -561.54, 9999.99, 0.00, cast(null as decimal(18,2)), 'abandoned'
+          union all
+          select 'park_a', 9, 2, 2000, '2000-05-01', -574.91, -588.28, -601.65, -615.02, 628.39, 641.76, 655.13, -668.50, 681.87, -695.24, -708.61, -721.98, -735.35, -748.72, 3100.75, 1000.00, cast(30.25 as decimal(18,2)), 'kept'
+          union all
+          select 'park_a', 9, 3, 2000, '2000-06-01', -762.09, -775.46, -788.83, -802.20, 815.57, 828.94, 842.31, -855.68, 869.05, -882.42, -895.79, -909.16, -922.53, -935.90, 8888.88, 0.00, cast(null as decimal(18,2)), 'abandoned'
+          union all
+          select 'park_b', 9, 0, 2000, '2000-03-01', -949.27, -962.64, -976.01, -989.38, 1002.75, 1016.12, 1029.49, -1042.86, 1056.23, -1069.60, -1082.97, -1096.34, -1109.71, -1123.08, 777.77, 0, cast(null as decimal(18,2)), 'kept'
+          union all
+          select 'park_c', 9, 0, 2000, '2000-03-01', -1136.45, -1149.82, -1163.19, -1176.56, 1189.93, 1203.30, 1216.67, -1230.04, 1243.41, -1256.78, -1270.15, -1283.52, -1296.89, -1310.26, 500.00, 0, cast(null as decimal(18,2)), 'kept'
+          union all
+          select 'park_c', 9, 2, 2000, '2000-05-01', -1323.63, -1337.00, -1350.37, -1363.74, 1377.11, 1390.48, 1403.85, -1417.22, 1430.59, -1443.96, -1457.33, -1470.70, -1484.07, -1497.44, -2508.25, 0, cast(null as decimal(18,2)), 'kept'
+          union all
+          select cast('park_d' as varchar) as park_id, cast(9 as integer) as statement_year, cast(7 as integer) as statement_month, cast(2000 as integer) as company_year, cast('2000-10-01' as date) as statement_company_date, cast(-1.00 as decimal(18,2)) as ride_construction_usd, cast(-2.00 as decimal(18,2)) as ride_runningcosts_usd, cast(-3.00 as decimal(18,2)) as land_purchase_usd, cast(-4.00 as decimal(18,2)) as landscaping_usd, cast(5.00 as decimal(18,2)) as park_entrance_tickets_usd, cast(6.00 as decimal(18,2)) as park_ride_tickets_usd, cast(7.00 as decimal(18,2)) as shop_sales_usd, cast(-8.00 as decimal(18,2)) as shop_stock_usd, cast(9.00 as decimal(18,2)) as food_drink_sales_usd, cast(-10.00 as decimal(18,2)) as food_drink_stock_usd, cast(-11.00 as decimal(18,2)) as wages_usd, cast(-12.00 as decimal(18,2)) as marketing_usd, cast(-13.00 as decimal(18,2)) as research_usd, cast(-14.00 as decimal(18,2)) as interest_usd, cast(1200.00 as decimal(18,2)) as cash_usd, cast(0.00 as decimal(18,2)) as bank_loan_usd, cast(null as decimal(18,2)) as new_month_booked_usd, cast('kept' as varchar) as timeline_status
+          union all
+          select cast('park_d' as varchar) as park_id, cast(10 as integer) as statement_year, cast(0 as integer) as statement_month, cast(2001 as integer) as company_year, cast('2001-03-01' as date) as statement_company_date, cast(-1.00 as decimal(18,2)) as ride_construction_usd, cast(-2.00 as decimal(18,2)) as ride_runningcosts_usd, cast(-3.00 as decimal(18,2)) as land_purchase_usd, cast(-4.00 as decimal(18,2)) as landscaping_usd, cast(5.00 as decimal(18,2)) as park_entrance_tickets_usd, cast(6.00 as decimal(18,2)) as park_ride_tickets_usd, cast(7.00 as decimal(18,2)) as shop_sales_usd, cast(-8.00 as decimal(18,2)) as shop_stock_usd, cast(9.00 as decimal(18,2)) as food_drink_sales_usd, cast(-10.00 as decimal(18,2)) as food_drink_stock_usd, cast(-11.00 as decimal(18,2)) as wages_usd, cast(-12.00 as decimal(18,2)) as marketing_usd, cast(-13.00 as decimal(18,2)) as research_usd, cast(-14.00 as decimal(18,2)) as interest_usd, cast(1500.00 as decimal(18,2)) as cash_usd, cast(0.00 as decimal(18,2)) as bank_loan_usd, cast(null as decimal(18,2)) as new_month_booked_usd, cast('kept' as varchar) as timeline_status
+    expect:
+      rows:
+        - {park_month_key: 'park_a|9|0', company_year: 2000, cash_usd: 1000.25, new_month_booked_usd: 0.00, months_since_previous_statement: null, net_cash_change_usd: null, operating_profit: -387.73, capital_spending: -106.96}
+        - {park_month_key: 'park_a|9|1', company_year: 2000, cash_usd: 2500.50, new_month_booked_usd: 20.00, months_since_previous_statement: 1, net_cash_change_usd: 480.25, operating_profit: -762.09, capital_spending: -668.50}
+        - {park_month_key: 'park_a|9|2', company_year: 2000, cash_usd: 3100.75, new_month_booked_usd: 30.25, months_since_previous_statement: 1, net_cash_change_usd: 590.00, operating_profit: -1510.81, capital_spending: -1791.58}
+        - {park_month_key: 'park_b|9|0', company_year: 2000, cash_usd: 777.77, new_month_booked_usd: 0.00, months_since_previous_statement: null, net_cash_change_usd: null, operating_profit: -2259.53, capital_spending: -2914.66}
+        - {park_month_key: 'park_c|9|0', company_year: 2000, cash_usd: 500.00, new_month_booked_usd: 0.00, months_since_previous_statement: null, net_cash_change_usd: null, operating_profit: -2633.89, capital_spending: -3476.20}
+        - {park_month_key: 'park_c|9|2', company_year: 2000, cash_usd: -2508.25, new_month_booked_usd: 0.00, months_since_previous_statement: 2, net_cash_change_usd: -3008.25, operating_profit: -3008.25, capital_spending: -4037.74}
+        - {park_month_key: 'park_d|9|7', company_year: 2000, cash_usd: 1200.00, new_month_booked_usd: 0.00, months_since_previous_statement: null, net_cash_change_usd: null, operating_profit: -29.00, capital_spending: -8.00}
+        - {park_month_key: 'park_d|10|0', company_year: 2001, cash_usd: 1500.00, new_month_booked_usd: 0.00, months_since_previous_statement: 1, net_cash_change_usd: 300.00, operating_profit: -29.00, capital_spending: -8.00}

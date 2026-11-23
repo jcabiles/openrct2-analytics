@@ -1,0 +1,534 @@
+version: 2
+
+models:
+  - name: stg_guest_snapshot
+    description: >-
+      Answers how the guests in a random daily cohort feel and what they carry, so guest mood and spending
+      questions start from one clean row per reading. Grain: one row per cohort member per game day, which is
+      one guest_snapshot event, kept once per event_id (the earliest delivery by received_at, _raw_file,
+      _raw_line). Key: event_id. The cohort is a random sample, not every guest: each new guest joins with a fixed probability only while
+      the cohort has room, so once it is full later guests cannot join and it leans to earlier guests. Its use is
+      observational. Renames and casts only, plus the one money conversion from tenths of a
+      dollar to dollars and one placeholder turned to null: 65535 on thought_item (the thought has no argument).
+      The values 255 (maximum on happiness, hunger, thirst and nausea) and the empty items_carried pass through
+      unchanged.
+      The model has no unit and no clock of its own; each column names its own.
+    meta:
+      contract_version: 1.8.0
+      expected_min_rows: 1
+    config:
+      contract:
+        enforced: true
+    data_tests:
+      - repeat_delivery_payload_differs:
+          arguments:
+            source_relation: source('landing', 'guest_snapshot')
+    columns:
+      - name: schema_version
+        description: "Major version of the contract set; unit: count (always 1 here); no clock."
+        data_type: integer
+        data_tests:
+          - not_null
+      - name: event_type
+        description: "Event kind (guest_snapshot here); text, no unit, no clock."
+        data_type: varchar
+        data_tests:
+          - not_null
+      - name: plugin_version
+        description: "Plugin build that sent the event; text version, no unit, no clock."
+        data_type: varchar
+        data_tests:
+          - not_null
+      - name: park_id
+        description: "Stable park identifier from park storage; text, no unit, no clock."
+        data_type: varchar
+        data_tests:
+          - not_null
+      - name: session_id
+        description: "Plugin start identifier, new on every start; text, no unit, no clock."
+        data_type: varchar
+        data_tests:
+          - not_null
+      - name: seq
+        description: "Order within the session across all event types, from 1; unit: count; no clock (session order, not a time)."
+        data_type: bigint
+        data_tests:
+          - not_null
+      - name: event_id
+        description: "session_id-seq; text, unique after the dedupe; no unit, no clock."
+        data_type: varchar
+        data_tests:
+          - not_null
+          - unique
+      - name: game_year
+        description: "In-game year, from 1; unit: year; clock: game calendar."
+        data_type: integer
+        data_tests:
+          - not_null
+      - name: game_month
+        description: "In-game month, 0 to 7 (March = 0); unit: month; clock: game calendar."
+        data_type: integer
+        data_tests:
+          - not_null
+      - name: game_day
+        description: "In-game day of the month, from 1; unit: day; clock: game calendar."
+        data_type: integer
+        data_tests:
+          - not_null
+      - name: game_ticks_elapsed
+        description: "Game ticks since the park began; unit: game tick; clock: game."
+        data_type: bigint
+        data_tests:
+          - not_null
+      - name: emitted_at
+        description: "Producer time when the event was sent; unit: timestamp (UTC); clock: wall clock."
+        data_type: timestamp with time zone
+        data_tests:
+          - not_null
+      - name: received_at
+        description: "Listener time when the line landed; unit: timestamp (UTC); clock: wall clock."
+        data_type: timestamp with time zone
+        data_tests:
+          - not_null
+      - name: _raw_file
+        description: "Base name of the raw JSON Lines file the delivery came from, never a path; text, no unit, no clock."
+        data_type: varchar
+        data_tests:
+          - not_null
+      - name: _raw_line
+        description: "1-based physical line number of the delivery in that raw file, blank lines counted; unit: line number; no clock."
+        data_type: bigint
+        data_tests:
+          - not_null
+      - name: guest_key
+        description: "Guest identifier the plugin minted, from 1, unique within one session; with session_id it names a guest; a whole number, no unit, no clock."
+        data_type: integer
+        data_tests:
+          - not_null
+      - name: guest_id
+        description: "The game's guest entity slot number, a whole number; the game reuses a slot, so it is not an identity (use guest_key); no unit, no clock."
+        data_type: integer
+        data_tests:
+          - not_null
+      - name: happiness
+        description: "Guest happiness as read, 0 (unhappy) to 255 (happy); unit: game scale 0 to 255 (255 is the maximum and is kept as sent); clock: game, at the daily guest step."
+        data_type: integer
+      - name: hunger
+        description: "Guest hunger as read; unit: game scale 0 to 255 (255 is the maximum and is kept as sent); clock: game, at the daily guest step."
+        data_type: integer
+      - name: thirst
+        description: "Guest thirst as read; unit: game scale 0 to 255 (255 is the maximum and is kept as sent); clock: game, at the daily guest step."
+        data_type: integer
+      - name: nausea
+        description: "Guest nausea as read; unit: game scale 0 to 255 (255 is the maximum and is kept as sent); clock: game, at the daily guest step."
+        data_type: integer
+      - name: energy
+        description: "Guest energy as read; unit: game scale 32 to 128; clock: game, at the daily guest step."
+        data_type: integer
+      - name: guest_cash_usd
+        description: "The guest's cash at the read in US dollars (decimal(18,2)), converted once from the source's tenths of a dollar; unit: US dollars; clock: game, at the daily guest step. Null when the source sent none."
+        data_type: decimal(18,2)
+      - name: items_carried
+        description: "Names of the items the guest carries (the game's item names) joined with |; the empty string for none, kept as sent; text, no unit, no clock."
+        data_type: varchar
+        data_tests:
+          - not_null
+      - name: thought_type
+        description: "Type of the guest's newest thought; text, no unit, no clock; null when the guest has no thought."
+        data_type: varchar
+      - name: thought_item
+        description: "The newest thought's item as read; meaning depends on thought_type (a ride slot number for a refusal); null when the thought has no argument (the game sends 65535, turned to null here), when the guest has no thought, or when the game's read of the item failed; no unit, no clock."
+        data_type: integer
+
+unit_tests:
+  - name: stg_guest_snapshot_keeps_first_delivery_by_received_file_line
+    description: It proves the lower _raw_line wins at equal received_at and _raw_file, whatever the input order, that 65535 on thought_item becomes null, and that 255 and the empty items_carried pass through while a null cash stays null.
+    model: stg_guest_snapshot
+    given:
+      - input: source('landing', 'guest_snapshot')
+        format: sql
+        rows: |
+          select
+            cast(1 as integer) as schema_version, cast('guest_snapshot' as varchar) as event_type,
+            cast('0.3.0' as varchar) as plugin_version, cast('kpark1' as varchar) as park_id,
+            cast('s1' as varchar) as session_id, cast(5 as bigint) as seq, cast('s1-5' as varchar) as event_id,
+            cast(2 as integer) as game_year, cast(3 as integer) as game_month, cast(4 as integer) as game_day,
+            cast(5000 as bigint) as game_ticks_elapsed,
+            cast('2026-09-30 23:30:00+00' as timestamptz) as emitted_at,
+            cast('2026-09-30 23:31:00+00' as timestamptz) as received_at,
+            cast('b.jsonl' as varchar) as _raw_file, cast(1 as bigint) as _raw_line,
+            cast(111 as integer) as guest_key, cast(121 as integer) as guest_id,
+            cast(131 as integer) as happiness, cast(141 as integer) as hunger, cast(151 as integer) as thirst,
+            cast(161 as integer) as nausea, cast(171 as integer) as energy,
+            cast(181 as bigint) as guest_cash_tenths,
+            cast('items_carried-s1-5-b.jsonl:1' as varchar) as items_carried,
+            cast('thought_type-s1-5-b.jsonl:1' as varchar) as thought_type,
+            cast(191 as integer) as thought_item
+          union all
+          select
+            cast(1 as integer), cast('guest_snapshot' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(5 as bigint), cast('s1-5' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(4 as integer), cast(5000 as bigint),
+            cast('2026-09-30 23:20:00+00' as timestamptz), cast('2026-09-30 23:31:00+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(9 as bigint), cast(111 as integer), cast(121 as integer),
+            cast(131 as integer), cast(141 as integer), cast(151 as integer), cast(161 as integer),
+            cast(171 as integer), cast(181 as bigint), cast('items_carried-s1-5-a.jsonl:9' as varchar),
+            cast('thought_type-s1-5-a.jsonl:9' as varchar), cast(191 as integer)
+          union all
+          select
+            cast(1 as integer), cast('guest_snapshot' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(5 as bigint), cast('s1-5' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(4 as integer), cast(5000 as bigint),
+            cast('2026-09-30 23:25:00+00' as timestamptz), cast('2026-09-30 23:31:00+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(4 as bigint), cast(11 as integer), cast(21 as integer),
+            cast(255 as integer), cast(254 as integer), cast(253 as integer), cast(252 as integer),
+            cast(71 as integer), cast(12345 as bigint), cast('items_carried-s1-5-a.jsonl:4' as varchar),
+            cast('thought_type-s1-5-a.jsonl:4' as varchar), cast(65535 as integer)
+          union all
+          select
+            cast(1 as integer), cast('guest_snapshot' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(5 as bigint), cast('s1-5' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(4 as integer), cast(5000 as bigint),
+            cast('2026-09-30 23:10:00+00' as timestamptz), cast('2026-09-30 23:32:00+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(2 as bigint), cast(111 as integer), cast(121 as integer),
+            cast(131 as integer), cast(141 as integer), cast(151 as integer), cast(161 as integer),
+            cast(171 as integer), cast(181 as bigint), cast('items_carried-s1-5-a.jsonl:2' as varchar),
+            cast('thought_type-s1-5-a.jsonl:2' as varchar), cast(191 as integer)
+          union all
+          select
+            cast(1 as integer), cast('guest_snapshot' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(8 as bigint), cast('s1-8' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(6 as integer), cast(6000 as bigint),
+            cast('2026-09-30 23:40:00+00' as timestamptz), cast('2026-09-30 23:41:00+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(12 as bigint), cast(12 as integer), cast(22 as integer),
+            cast(32 as integer), cast(42 as integer), cast(255 as integer), cast(62 as integer),
+            cast(72 as integer), cast(null as bigint), cast('' as varchar), cast(null as varchar),
+            cast(null as integer)
+          union all
+          select
+            cast(1 as integer), cast('guest_snapshot' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(10 as bigint), cast('s1-10' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(7 as integer), cast(7000 as bigint),
+            cast('2026-09-30 23:10:00+00' as timestamptz), cast('2026-09-30 23:50:00+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(2 as bigint), cast(113 as integer), cast(123 as integer),
+            cast(133 as integer), cast(143 as integer), cast(153 as integer), cast(163 as integer),
+            cast(173 as integer), cast(183 as bigint), cast('items_carried-s1-10-a.jsonl:2' as varchar),
+            cast('thought_type-s1-10-a.jsonl:2' as varchar), cast(193 as integer)
+          union all
+          select
+            cast(1 as integer), cast('guest_snapshot' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(10 as bigint), cast('s1-10' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(7 as integer), cast(7000 as bigint),
+            cast('2026-09-30 23:00:00+00' as timestamptz), cast('2026-09-30 23:00:00+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(30 as bigint), cast(13 as integer), cast(23 as integer),
+            cast(33 as integer), cast(255 as integer), cast(53 as integer), cast(63 as integer),
+            cast(73 as integer), cast(83 as bigint), cast('items_carried-s1-10-a.jsonl:30' as varchar),
+            cast('thought_type-s1-10-a.jsonl:30' as varchar), cast(93 as integer)
+          union all
+          select
+            cast(1 as integer), cast('guest_snapshot' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(11 as bigint), cast('s1-11' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(8 as integer), cast(8000 as bigint),
+            cast('2026-09-30 23:00:00+00' as timestamptz), cast('2026-09-30 23:51:00+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(51 as bigint), cast(114 as integer), cast(124 as integer),
+            cast(134 as integer), cast(144 as integer), cast(154 as integer), cast(164 as integer),
+            cast(174 as integer), cast(184 as bigint), cast('items_carried-s1-11-a.jsonl:51' as varchar),
+            cast('thought_type-s1-11-a.jsonl:51' as varchar), cast(194 as integer)
+          union all
+          select
+            cast(1 as integer), cast('guest_snapshot' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(11 as bigint), cast('s1-11' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(8 as integer), cast(8000 as bigint),
+            cast('2026-09-30 23:10:00+00' as timestamptz), cast('2026-09-30 23:51:00+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(7 as bigint), cast(14 as integer), cast(24 as integer),
+            cast(34 as integer), cast(44 as integer), cast(54 as integer), cast(255 as integer),
+            cast(74 as integer), cast(84 as bigint), cast('items_carried-s1-11-a.jsonl:7' as varchar),
+            cast('thought_type-s1-11-a.jsonl:7' as varchar), cast(94 as integer)
+          union all
+          select
+            cast(1 as integer), cast('guest_snapshot' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(12 as bigint), cast('s1-12' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(9 as integer), cast(9000 as bigint),
+            cast('2026-09-30 23:10:00+00' as timestamptz), cast('2026-09-30 23:52:00+00' as timestamptz),
+            cast('b.jsonl' as varchar), cast(3 as bigint), cast(15 as integer), cast(25 as integer),
+            cast(35 as integer), cast(45 as integer), cast(55 as integer), cast(65 as integer),
+            cast(75 as integer), cast(85 as bigint), cast('items_carried-s1-12-b.jsonl:3' as varchar),
+            cast('thought_type-s1-12-b.jsonl:3' as varchar), cast(95 as integer)
+          union all
+          select
+            cast(1 as integer), cast('guest_snapshot' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(12 as bigint), cast('s1-12' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(9 as integer), cast(9000 as bigint),
+            cast('2026-09-30 23:00:00+00' as timestamptz), cast('2026-09-30 23:52:00+00' as timestamptz),
+            cast('b.jsonl' as varchar), cast(40 as bigint), cast(115 as integer), cast(125 as integer),
+            cast(135 as integer), cast(145 as integer), cast(155 as integer), cast(165 as integer),
+            cast(175 as integer), cast(185 as bigint), cast('items_carried-s1-12-b.jsonl:40' as varchar),
+            cast('thought_type-s1-12-b.jsonl:40' as varchar), cast(195 as integer)
+          union all
+          select
+            cast(1 as integer), cast('guest_snapshot' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(20 as bigint), cast('s1-20' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(24 as integer), cast(6000 as bigint),
+            cast('2026-09-30 23:41:20+00' as timestamptz), cast('2026-09-30 23:55:20+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(20 as bigint), cast(116 as integer), cast(126 as integer),
+            cast(136 as integer), cast(146 as integer), cast(156 as integer), cast(166 as integer),
+            cast(176 as integer), cast(186 as bigint), cast('items_carried-s1-20-a.jsonl:20' as varchar),
+            cast('thought_type-s1-20-a.jsonl:20' as varchar), cast(196 as integer)
+          union all
+          select
+            cast(1 as integer), cast('guest_snapshot' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(20 as bigint), cast('s1-20' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(24 as integer), cast(6000 as bigint),
+            cast('2026-09-30 23:40:20+00' as timestamptz), cast('2026-09-30 23:55:20+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(2 as bigint), cast(16 as integer), cast(26 as integer),
+            cast(36 as integer), cast(46 as integer), cast(56 as integer), cast(66 as integer),
+            cast(76 as integer), cast(86 as bigint), cast('items_carried-s1-20-a.jsonl:2' as varchar),
+            cast('thought_type-s1-20-a.jsonl:2' as varchar), cast(96 as integer)
+          union all
+          select
+            cast(1 as integer), cast('guest_snapshot' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(21 as bigint), cast('s1-21' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(25 as integer), cast(6100 as bigint),
+            cast('2026-09-30 23:41:21+00' as timestamptz), cast('2026-09-30 23:55:21+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(20 as bigint), cast(117 as integer), cast(127 as integer),
+            cast(137 as integer), cast(147 as integer), cast(157 as integer), cast(167 as integer),
+            cast(177 as integer), cast(187 as bigint), cast('items_carried-s1-21-a.jsonl:20' as varchar),
+            cast('thought_type-s1-21-a.jsonl:20' as varchar), cast(197 as integer)
+          union all
+          select
+            cast(1 as integer), cast('guest_snapshot' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(21 as bigint), cast('s1-21' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(25 as integer), cast(6100 as bigint),
+            cast('2026-09-30 23:40:21+00' as timestamptz), cast('2026-09-30 23:55:21+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(2 as bigint), cast(17 as integer), cast(27 as integer),
+            cast(37 as integer), cast(47 as integer), cast(57 as integer), cast(67 as integer),
+            cast(77 as integer), cast(87 as bigint), cast('items_carried-s1-21-a.jsonl:2' as varchar),
+            cast('thought_type-s1-21-a.jsonl:2' as varchar), cast(97 as integer)
+          union all
+          select
+            cast(1 as integer), cast('guest_snapshot' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(22 as bigint), cast('s1-22' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(26 as integer), cast(6200 as bigint),
+            cast('2026-09-30 23:41:22+00' as timestamptz), cast('2026-09-30 23:55:22+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(20 as bigint), cast(118 as integer), cast(128 as integer),
+            cast(138 as integer), cast(148 as integer), cast(158 as integer), cast(168 as integer),
+            cast(178 as integer), cast(188 as bigint), cast('items_carried-s1-22-a.jsonl:20' as varchar),
+            cast('thought_type-s1-22-a.jsonl:20' as varchar), cast(198 as integer)
+          union all
+          select
+            cast(1 as integer), cast('guest_snapshot' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(22 as bigint), cast('s1-22' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(26 as integer), cast(6200 as bigint),
+            cast('2026-09-30 23:40:22+00' as timestamptz), cast('2026-09-30 23:55:22+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(2 as bigint), cast(18 as integer), cast(28 as integer),
+            cast(38 as integer), cast(48 as integer), cast(58 as integer), cast(68 as integer),
+            cast(78 as integer), cast(88 as bigint), cast('items_carried-s1-22-a.jsonl:2' as varchar),
+            cast('thought_type-s1-22-a.jsonl:2' as varchar), cast(98 as integer)
+          union all
+          select
+            cast(1 as integer), cast('guest_snapshot' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(23 as bigint), cast('s1-23' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(27 as integer), cast(6300 as bigint),
+            cast('2026-09-30 23:41:23+00' as timestamptz), cast('2026-09-30 23:55:23+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(20 as bigint), cast(119 as integer), cast(129 as integer),
+            cast(139 as integer), cast(149 as integer), cast(159 as integer), cast(169 as integer),
+            cast(179 as integer), cast(189 as bigint), cast('items_carried-s1-23-a.jsonl:20' as varchar),
+            cast('thought_type-s1-23-a.jsonl:20' as varchar), cast(199 as integer)
+          union all
+          select
+            cast(1 as integer), cast('guest_snapshot' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(23 as bigint), cast('s1-23' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(27 as integer), cast(6300 as bigint),
+            cast('2026-09-30 23:40:23+00' as timestamptz), cast('2026-09-30 23:55:23+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(2 as bigint), cast(19 as integer), cast(29 as integer),
+            cast(39 as integer), cast(49 as integer), cast(59 as integer), cast(69 as integer),
+            cast(79 as integer), cast(89 as bigint), cast('items_carried-s1-23-a.jsonl:2' as varchar),
+            cast('thought_type-s1-23-a.jsonl:2' as varchar), cast(99 as integer)
+          union all
+          select
+            cast(1 as integer), cast('guest_snapshot' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(24 as bigint), cast('s1-24' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(28 as integer), cast(6400 as bigint),
+            cast('2026-09-30 23:41:24+00' as timestamptz), cast('2026-09-30 23:55:24+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(20 as bigint), cast(120 as integer), cast(130 as integer),
+            cast(140 as integer), cast(150 as integer), cast(160 as integer), cast(170 as integer),
+            cast(180 as integer), cast(190 as bigint), cast('items_carried-s1-24-a.jsonl:20' as varchar),
+            cast('thought_type-s1-24-a.jsonl:20' as varchar), cast(200 as integer)
+          union all
+          select
+            cast(1 as integer), cast('guest_snapshot' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(24 as bigint), cast('s1-24' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(28 as integer), cast(6400 as bigint),
+            cast('2026-09-30 23:40:24+00' as timestamptz), cast('2026-09-30 23:55:24+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(2 as bigint), cast(20 as integer), cast(30 as integer),
+            cast(40 as integer), cast(50 as integer), cast(60 as integer), cast(70 as integer),
+            cast(80 as integer), cast(90 as bigint), cast('items_carried-s1-24-a.jsonl:2' as varchar),
+            cast('thought_type-s1-24-a.jsonl:2' as varchar), cast(100 as integer)
+          union all
+          select
+            cast(1 as integer), cast('guest_snapshot' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(25 as bigint), cast('s1-25' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(29 as integer), cast(6500 as bigint),
+            cast('2026-09-30 23:41:25+00' as timestamptz), cast('2026-09-30 23:55:25+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(20 as bigint), cast(121 as integer), cast(131 as integer),
+            cast(141 as integer), cast(151 as integer), cast(161 as integer), cast(171 as integer),
+            cast(181 as integer), cast(191 as bigint), cast('items_carried-s1-25-a.jsonl:20' as varchar),
+            cast('thought_type-s1-25-a.jsonl:20' as varchar), cast(201 as integer)
+          union all
+          select
+            cast(1 as integer), cast('guest_snapshot' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(25 as bigint), cast('s1-25' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(29 as integer), cast(6500 as bigint),
+            cast('2026-09-30 23:40:25+00' as timestamptz), cast('2026-09-30 23:55:25+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(2 as bigint), cast(21 as integer), cast(31 as integer),
+            cast(41 as integer), cast(51 as integer), cast(61 as integer), cast(71 as integer),
+            cast(81 as integer), cast(91 as bigint), cast('items_carried-s1-25-a.jsonl:2' as varchar),
+            cast('thought_type-s1-25-a.jsonl:2' as varchar), cast(101 as integer)
+          union all
+          select
+            cast(1 as integer), cast('guest_snapshot' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(26 as bigint), cast('s1-26' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(30 as integer), cast(6600 as bigint),
+            cast('2026-09-30 23:41:26+00' as timestamptz), cast('2026-09-30 23:55:26+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(20 as bigint), cast(122 as integer), cast(132 as integer),
+            cast(142 as integer), cast(152 as integer), cast(162 as integer), cast(172 as integer),
+            cast(182 as integer), cast(192 as bigint), cast('items_carried-s1-26-a.jsonl:20' as varchar),
+            cast('thought_type-s1-26-a.jsonl:20' as varchar), cast(202 as integer)
+          union all
+          select
+            cast(1 as integer), cast('guest_snapshot' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(26 as bigint), cast('s1-26' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(30 as integer), cast(6600 as bigint),
+            cast('2026-09-30 23:40:26+00' as timestamptz), cast('2026-09-30 23:55:26+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(2 as bigint), cast(22 as integer), cast(32 as integer),
+            cast(42 as integer), cast(52 as integer), cast(62 as integer), cast(72 as integer),
+            cast(82 as integer), cast(92 as bigint), cast('items_carried-s1-26-a.jsonl:2' as varchar),
+            cast('thought_type-s1-26-a.jsonl:2' as varchar), cast(102 as integer)
+    expect:
+      format: sql
+      rows: |
+        select
+          cast(1 as integer) as schema_version, cast('guest_snapshot' as varchar) as event_type,
+          cast('0.3.0' as varchar) as plugin_version, cast('kpark1' as varchar) as park_id,
+          cast('s1' as varchar) as session_id, cast(5 as bigint) as seq, cast('s1-5' as varchar) as event_id,
+          cast(2 as integer) as game_year, cast(3 as integer) as game_month, cast(4 as integer) as game_day,
+          cast(5000 as bigint) as game_ticks_elapsed,
+          cast('2026-09-30 23:25:00+00' as timestamptz) as emitted_at,
+          cast('2026-09-30 23:31:00+00' as timestamptz) as received_at, cast('a.jsonl' as varchar) as _raw_file,
+          cast(4 as bigint) as _raw_line, cast(11 as integer) as guest_key, cast(21 as integer) as guest_id,
+          cast(255 as integer) as happiness, cast(254 as integer) as hunger, cast(253 as integer) as thirst,
+          cast(252 as integer) as nausea, cast(71 as integer) as energy,
+          cast(1234.50 as decimal(18,2)) as guest_cash_usd,
+          cast('items_carried-s1-5-a.jsonl:4' as varchar) as items_carried,
+          cast('thought_type-s1-5-a.jsonl:4' as varchar) as thought_type,
+          cast(null as integer) as thought_item
+        union all
+        select
+          cast(1 as integer), cast('guest_snapshot' as varchar), cast('0.3.0' as varchar),
+          cast('kpark1' as varchar), cast('s1' as varchar), cast(8 as bigint), cast('s1-8' as varchar),
+          cast(2 as integer), cast(3 as integer), cast(6 as integer), cast(6000 as bigint),
+          cast('2026-09-30 23:40:00+00' as timestamptz), cast('2026-09-30 23:41:00+00' as timestamptz),
+          cast('a.jsonl' as varchar), cast(12 as bigint), cast(12 as integer), cast(22 as integer),
+          cast(32 as integer), cast(42 as integer), cast(255 as integer), cast(62 as integer),
+          cast(72 as integer), cast(null as decimal(18,2)), cast('' as varchar), cast(null as varchar),
+          cast(null as integer)
+        union all
+        select
+          cast(1 as integer), cast('guest_snapshot' as varchar), cast('0.3.0' as varchar),
+          cast('kpark1' as varchar), cast('s1' as varchar), cast(10 as bigint), cast('s1-10' as varchar),
+          cast(2 as integer), cast(3 as integer), cast(7 as integer), cast(7000 as bigint),
+          cast('2026-09-30 23:00:00+00' as timestamptz), cast('2026-09-30 23:00:00+00' as timestamptz),
+          cast('a.jsonl' as varchar), cast(30 as bigint), cast(13 as integer), cast(23 as integer),
+          cast(33 as integer), cast(255 as integer), cast(53 as integer), cast(63 as integer),
+          cast(73 as integer), cast(8.30 as decimal(18,2)), cast('items_carried-s1-10-a.jsonl:30' as varchar),
+          cast('thought_type-s1-10-a.jsonl:30' as varchar), cast(93 as integer)
+        union all
+        select
+          cast(1 as integer), cast('guest_snapshot' as varchar), cast('0.3.0' as varchar),
+          cast('kpark1' as varchar), cast('s1' as varchar), cast(11 as bigint), cast('s1-11' as varchar),
+          cast(2 as integer), cast(3 as integer), cast(8 as integer), cast(8000 as bigint),
+          cast('2026-09-30 23:10:00+00' as timestamptz), cast('2026-09-30 23:51:00+00' as timestamptz),
+          cast('a.jsonl' as varchar), cast(7 as bigint), cast(14 as integer), cast(24 as integer),
+          cast(34 as integer), cast(44 as integer), cast(54 as integer), cast(255 as integer),
+          cast(74 as integer), cast(8.40 as decimal(18,2)), cast('items_carried-s1-11-a.jsonl:7' as varchar),
+          cast('thought_type-s1-11-a.jsonl:7' as varchar), cast(94 as integer)
+        union all
+        select
+          cast(1 as integer), cast('guest_snapshot' as varchar), cast('0.3.0' as varchar),
+          cast('kpark1' as varchar), cast('s1' as varchar), cast(12 as bigint), cast('s1-12' as varchar),
+          cast(2 as integer), cast(3 as integer), cast(9 as integer), cast(9000 as bigint),
+          cast('2026-09-30 23:10:00+00' as timestamptz), cast('2026-09-30 23:52:00+00' as timestamptz),
+          cast('b.jsonl' as varchar), cast(3 as bigint), cast(15 as integer), cast(25 as integer),
+          cast(35 as integer), cast(45 as integer), cast(55 as integer), cast(65 as integer),
+          cast(75 as integer), cast(8.50 as decimal(18,2)), cast('items_carried-s1-12-b.jsonl:3' as varchar),
+          cast('thought_type-s1-12-b.jsonl:3' as varchar), cast(95 as integer)
+        union all
+        select
+          cast(1 as integer), cast('guest_snapshot' as varchar), cast('0.3.0' as varchar),
+          cast('kpark1' as varchar), cast('s1' as varchar), cast(20 as bigint), cast('s1-20' as varchar),
+          cast(2 as integer), cast(3 as integer), cast(24 as integer), cast(6000 as bigint),
+          cast('2026-09-30 23:40:20+00' as timestamptz), cast('2026-09-30 23:55:20+00' as timestamptz),
+          cast('a.jsonl' as varchar), cast(2 as bigint), cast(16 as integer), cast(26 as integer),
+          cast(36 as integer), cast(46 as integer), cast(56 as integer), cast(66 as integer),
+          cast(76 as integer), cast(8.60 as decimal(18,2)), cast('items_carried-s1-20-a.jsonl:2' as varchar),
+          cast('thought_type-s1-20-a.jsonl:2' as varchar), cast(96 as integer)
+        union all
+        select
+          cast(1 as integer), cast('guest_snapshot' as varchar), cast('0.3.0' as varchar),
+          cast('kpark1' as varchar), cast('s1' as varchar), cast(21 as bigint), cast('s1-21' as varchar),
+          cast(2 as integer), cast(3 as integer), cast(25 as integer), cast(6100 as bigint),
+          cast('2026-09-30 23:40:21+00' as timestamptz), cast('2026-09-30 23:55:21+00' as timestamptz),
+          cast('a.jsonl' as varchar), cast(2 as bigint), cast(17 as integer), cast(27 as integer),
+          cast(37 as integer), cast(47 as integer), cast(57 as integer), cast(67 as integer),
+          cast(77 as integer), cast(8.70 as decimal(18,2)), cast('items_carried-s1-21-a.jsonl:2' as varchar),
+          cast('thought_type-s1-21-a.jsonl:2' as varchar), cast(97 as integer)
+        union all
+        select
+          cast(1 as integer), cast('guest_snapshot' as varchar), cast('0.3.0' as varchar),
+          cast('kpark1' as varchar), cast('s1' as varchar), cast(22 as bigint), cast('s1-22' as varchar),
+          cast(2 as integer), cast(3 as integer), cast(26 as integer), cast(6200 as bigint),
+          cast('2026-09-30 23:40:22+00' as timestamptz), cast('2026-09-30 23:55:22+00' as timestamptz),
+          cast('a.jsonl' as varchar), cast(2 as bigint), cast(18 as integer), cast(28 as integer),
+          cast(38 as integer), cast(48 as integer), cast(58 as integer), cast(68 as integer),
+          cast(78 as integer), cast(8.80 as decimal(18,2)), cast('items_carried-s1-22-a.jsonl:2' as varchar),
+          cast('thought_type-s1-22-a.jsonl:2' as varchar), cast(98 as integer)
+        union all
+        select
+          cast(1 as integer), cast('guest_snapshot' as varchar), cast('0.3.0' as varchar),
+          cast('kpark1' as varchar), cast('s1' as varchar), cast(23 as bigint), cast('s1-23' as varchar),
+          cast(2 as integer), cast(3 as integer), cast(27 as integer), cast(6300 as bigint),
+          cast('2026-09-30 23:40:23+00' as timestamptz), cast('2026-09-30 23:55:23+00' as timestamptz),
+          cast('a.jsonl' as varchar), cast(2 as bigint), cast(19 as integer), cast(29 as integer),
+          cast(39 as integer), cast(49 as integer), cast(59 as integer), cast(69 as integer),
+          cast(79 as integer), cast(8.90 as decimal(18,2)), cast('items_carried-s1-23-a.jsonl:2' as varchar),
+          cast('thought_type-s1-23-a.jsonl:2' as varchar), cast(99 as integer)
+        union all
+        select
+          cast(1 as integer), cast('guest_snapshot' as varchar), cast('0.3.0' as varchar),
+          cast('kpark1' as varchar), cast('s1' as varchar), cast(24 as bigint), cast('s1-24' as varchar),
+          cast(2 as integer), cast(3 as integer), cast(28 as integer), cast(6400 as bigint),
+          cast('2026-09-30 23:40:24+00' as timestamptz), cast('2026-09-30 23:55:24+00' as timestamptz),
+          cast('a.jsonl' as varchar), cast(2 as bigint), cast(20 as integer), cast(30 as integer),
+          cast(40 as integer), cast(50 as integer), cast(60 as integer), cast(70 as integer),
+          cast(80 as integer), cast(9.00 as decimal(18,2)), cast('items_carried-s1-24-a.jsonl:2' as varchar),
+          cast('thought_type-s1-24-a.jsonl:2' as varchar), cast(100 as integer)
+        union all
+        select
+          cast(1 as integer), cast('guest_snapshot' as varchar), cast('0.3.0' as varchar),
+          cast('kpark1' as varchar), cast('s1' as varchar), cast(25 as bigint), cast('s1-25' as varchar),
+          cast(2 as integer), cast(3 as integer), cast(29 as integer), cast(6500 as bigint),
+          cast('2026-09-30 23:40:25+00' as timestamptz), cast('2026-09-30 23:55:25+00' as timestamptz),
+          cast('a.jsonl' as varchar), cast(2 as bigint), cast(21 as integer), cast(31 as integer),
+          cast(41 as integer), cast(51 as integer), cast(61 as integer), cast(71 as integer),
+          cast(81 as integer), cast(9.10 as decimal(18,2)), cast('items_carried-s1-25-a.jsonl:2' as varchar),
+          cast('thought_type-s1-25-a.jsonl:2' as varchar), cast(101 as integer)
+        union all
+        select
+          cast(1 as integer), cast('guest_snapshot' as varchar), cast('0.3.0' as varchar),
+          cast('kpark1' as varchar), cast('s1' as varchar), cast(26 as bigint), cast('s1-26' as varchar),
+          cast(2 as integer), cast(3 as integer), cast(30 as integer), cast(6600 as bigint),
+          cast('2026-09-30 23:40:26+00' as timestamptz), cast('2026-09-30 23:55:26+00' as timestamptz),
+          cast('a.jsonl' as varchar), cast(2 as bigint), cast(22 as integer), cast(32 as integer),
+          cast(42 as integer), cast(52 as integer), cast(62 as integer), cast(72 as integer),
+          cast(82 as integer), cast(9.20 as decimal(18,2)), cast('items_carried-s1-26-a.jsonl:2' as varchar),
+          cast('thought_type-s1-26-a.jsonl:2' as varchar), cast(102 as integer)

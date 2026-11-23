@@ -1,0 +1,373 @@
+version: 2
+
+models:
+  - name: stg_save_written
+    description: >-
+      Answers which saves the plugin made and where each one cut its session, so a later session that loads
+      a save can be tied to the events that came before it. Grain: one row per save_written event, kept once
+      per event_id (the earliest delivery by received_at, _raw_file, _raw_line). Key: event_id, and save_id
+      is unique on its own. Renames and casts only; it holds no money column. The model has no unit and no
+      clock of its own; each column names its own.
+    meta:
+      contract_version: 1.8.0
+      expected_min_rows: 1
+    data_tests:
+      - repeat_delivery_payload_differs:
+          arguments:
+            source_relation: source('landing', 'save_written')
+    columns:
+      - name: schema_version
+        description: "Major version of the contract set; unit: count (always 1 here); no clock."
+        data_tests:
+          - not_null
+      - name: event_type
+        description: "Event kind (save_written here); text, no unit, no clock."
+        data_tests:
+          - not_null
+      - name: plugin_version
+        description: "Plugin build that sent the event; text version, no unit, no clock."
+        data_tests:
+          - not_null
+      - name: park_id
+        description: "Stable park identifier from park storage; text, no unit, no clock."
+        data_tests:
+          - not_null
+      - name: session_id
+        description: "Plugin start identifier, new on every start; text, no unit, no clock."
+        data_tests:
+          - not_null
+      - name: seq
+        description: "Order within the session across all event types, from 1; unit: count; no clock (session order, not a time)."
+        data_tests:
+          - not_null
+      - name: event_id
+        description: "session_id-seq; text, unique after the dedupe; no unit, no clock."
+        data_tests:
+          - not_null
+          - unique
+      - name: game_year
+        description: "In-game year, from 1; unit: year; clock: game calendar."
+        data_tests:
+          - not_null
+      - name: game_month
+        description: "In-game month, 0 to 7 (March = 0); unit: month; clock: game calendar."
+        data_tests:
+          - not_null
+      - name: game_day
+        description: "In-game day of the month, from 1; unit: day; clock: game calendar."
+        data_tests:
+          - not_null
+      - name: game_ticks_elapsed
+        description: "Game ticks since the park began; unit: game tick; clock: game."
+        data_tests:
+          - not_null
+      - name: emitted_at
+        description: "Producer time when the event was sent; unit: timestamp (UTC); clock: wall clock."
+        data_tests:
+          - not_null
+      - name: received_at
+        description: "Listener time when the line landed; unit: timestamp (UTC); clock: wall clock."
+        data_tests:
+          - not_null
+      - name: _raw_file
+        description: "Base name of the raw JSON Lines file the delivery came from, never a path; text, no unit, no clock."
+        data_tests:
+          - not_null
+      - name: _raw_line
+        description: "1-based physical line number of the delivery in that raw file, blank lines counted; unit: line number; no clock."
+        data_tests:
+          - not_null
+      - name: save_id
+        description: "Save identifier the plugin minted in the save hook and stored in the saved file; text, no unit, no clock. Minted once per save, so it is the grain on its own."
+        data_tests:
+          - not_null
+          - unique
+
+unit_tests:
+  - name: stg_save_written_keeps_first_delivery_by_received_file_line
+    description: It proves the lower _raw_line wins at equal received_at and _raw_file, whatever the input order.
+    model: stg_save_written
+    given:
+      - input: source('landing', 'save_written')
+        format: sql
+        rows: |
+          select
+            cast(1 as integer) as schema_version,
+            cast('save_written' as varchar) as event_type,
+            cast('0.3.0' as varchar) as plugin_version,
+            cast('kpark1' as varchar) as park_id,
+            cast('s1' as varchar) as session_id,
+            cast(5 as bigint) as seq,
+            cast('s1-5' as varchar) as event_id,
+            cast(2 as integer) as game_year,
+            cast(3 as integer) as game_month,
+            cast(4 as integer) as game_day,
+            cast(5000 as bigint) as game_ticks_elapsed,
+            cast('2026-09-30 23:30:00+00' as timestamptz) as emitted_at,
+            cast('2026-09-30 23:31:00+00' as timestamptz) as received_at,
+            cast('b.jsonl' as varchar) as _raw_file,
+            cast(1 as bigint) as _raw_line,
+            cast('save-from-b-line-1' as varchar) as save_id
+          union all
+          select
+            cast(1 as integer), cast('save_written' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(5 as bigint), cast('s1-5' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(4 as integer), cast(5000 as bigint),
+            cast('2026-09-30 23:20:00+00' as timestamptz), cast('2026-09-30 23:31:00+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(9 as bigint), cast('save-from-a-line-9' as varchar)
+          union all
+          select
+            cast(1 as integer), cast('save_written' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(5 as bigint), cast('s1-5' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(4 as integer), cast(5000 as bigint),
+            cast('2026-09-30 23:25:00+00' as timestamptz), cast('2026-09-30 23:31:00+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(4 as bigint), cast('save-from-a-line-4' as varchar)
+          union all
+          select
+            cast(1 as integer), cast('save_written' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(5 as bigint), cast('s1-5' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(4 as integer), cast(5000 as bigint),
+            cast('2026-09-30 23:10:00+00' as timestamptz), cast('2026-09-30 23:32:00+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(2 as bigint), cast('save-from-late-delivery' as varchar)
+          union all
+          select
+            cast(1 as integer), cast('save_written' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(8 as bigint), cast('s1-8' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(6 as integer), cast(6000 as bigint),
+            cast('2026-09-30 23:40:00+00' as timestamptz), cast('2026-09-30 23:41:00+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(12 as bigint), cast('save-single' as varchar)
+          union all
+          select
+            cast(1 as integer), cast('save_written' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(10 as bigint), cast('s1-10' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(7 as integer), cast(7000 as bigint),
+            cast('2026-09-30 23:10:00+00' as timestamptz), cast('2026-09-30 23:50:00+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(2 as bigint), cast('save-s1-10-line-2' as varchar)
+          union all
+          select
+            cast(1 as integer), cast('save_written' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(10 as bigint), cast('s1-10' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(7 as integer), cast(7000 as bigint),
+            cast('2026-09-30 23:00:00+00' as timestamptz), cast('2026-09-30 23:00:00+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(30 as bigint), cast('save-s1-10-line-30' as varchar)
+          union all
+          select
+            cast(1 as integer), cast('save_written' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(11 as bigint), cast('s1-11' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(8 as integer), cast(8000 as bigint),
+            cast('2026-09-30 23:00:00+00' as timestamptz), cast('2026-09-30 23:51:00+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(51 as bigint), cast('save-s1-11-line-51' as varchar)
+          union all
+          select
+            cast(1 as integer), cast('save_written' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(11 as bigint), cast('s1-11' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(8 as integer), cast(8000 as bigint),
+            cast('2026-09-30 23:10:00+00' as timestamptz), cast('2026-09-30 23:51:00+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(7 as bigint), cast('save-s1-11-line-7' as varchar)
+          union all
+          select
+            cast(1 as integer), cast('save_written' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(12 as bigint), cast('s1-12' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(9 as integer), cast(9000 as bigint),
+            cast('2026-09-30 23:10:00+00' as timestamptz), cast('2026-09-30 23:52:00+00' as timestamptz),
+            cast('b.jsonl' as varchar), cast(3 as bigint), cast('save-s1-12-line-3' as varchar)
+          union all
+          select
+            cast(1 as integer), cast('save_written' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(12 as bigint), cast('s1-12' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(9 as integer), cast(9000 as bigint),
+            cast('2026-09-30 23:00:00+00' as timestamptz), cast('2026-09-30 23:52:00+00' as timestamptz),
+            cast('b.jsonl' as varchar), cast(40 as bigint), cast('save-s1-12-line-40' as varchar)
+          union all
+          select
+            cast(1 as integer), cast('save_written' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(20 as bigint), cast('s1-20' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(24 as integer), cast(6000 as bigint),
+            cast('2026-09-30 23:41:20+00' as timestamptz), cast('2026-09-30 23:55:20+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(20 as bigint), cast('save-s1-20-line-20' as varchar)
+          union all
+          select
+            cast(1 as integer), cast('save_written' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(20 as bigint), cast('s1-20' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(24 as integer), cast(6000 as bigint),
+            cast('2026-09-30 23:40:20+00' as timestamptz), cast('2026-09-30 23:55:20+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(2 as bigint), cast('save-s1-20-line-2' as varchar)
+          union all
+          select
+            cast(1 as integer), cast('save_written' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(21 as bigint), cast('s1-21' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(25 as integer), cast(6100 as bigint),
+            cast('2026-09-30 23:41:21+00' as timestamptz), cast('2026-09-30 23:55:21+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(20 as bigint), cast('save-s1-21-line-20' as varchar)
+          union all
+          select
+            cast(1 as integer), cast('save_written' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(21 as bigint), cast('s1-21' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(25 as integer), cast(6100 as bigint),
+            cast('2026-09-30 23:40:21+00' as timestamptz), cast('2026-09-30 23:55:21+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(2 as bigint), cast('save-s1-21-line-2' as varchar)
+          union all
+          select
+            cast(1 as integer), cast('save_written' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(22 as bigint), cast('s1-22' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(26 as integer), cast(6200 as bigint),
+            cast('2026-09-30 23:41:22+00' as timestamptz), cast('2026-09-30 23:55:22+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(20 as bigint), cast('save-s1-22-line-20' as varchar)
+          union all
+          select
+            cast(1 as integer), cast('save_written' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(22 as bigint), cast('s1-22' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(26 as integer), cast(6200 as bigint),
+            cast('2026-09-30 23:40:22+00' as timestamptz), cast('2026-09-30 23:55:22+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(2 as bigint), cast('save-s1-22-line-2' as varchar)
+          union all
+          select
+            cast(1 as integer), cast('save_written' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(23 as bigint), cast('s1-23' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(27 as integer), cast(6300 as bigint),
+            cast('2026-09-30 23:41:23+00' as timestamptz), cast('2026-09-30 23:55:23+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(20 as bigint), cast('save-s1-23-line-20' as varchar)
+          union all
+          select
+            cast(1 as integer), cast('save_written' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(23 as bigint), cast('s1-23' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(27 as integer), cast(6300 as bigint),
+            cast('2026-09-30 23:40:23+00' as timestamptz), cast('2026-09-30 23:55:23+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(2 as bigint), cast('save-s1-23-line-2' as varchar)
+          union all
+          select
+            cast(1 as integer), cast('save_written' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(24 as bigint), cast('s1-24' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(28 as integer), cast(6400 as bigint),
+            cast('2026-09-30 23:41:24+00' as timestamptz), cast('2026-09-30 23:55:24+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(20 as bigint), cast('save-s1-24-line-20' as varchar)
+          union all
+          select
+            cast(1 as integer), cast('save_written' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(24 as bigint), cast('s1-24' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(28 as integer), cast(6400 as bigint),
+            cast('2026-09-30 23:40:24+00' as timestamptz), cast('2026-09-30 23:55:24+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(2 as bigint), cast('save-s1-24-line-2' as varchar)
+          union all
+          select
+            cast(1 as integer), cast('save_written' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(25 as bigint), cast('s1-25' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(29 as integer), cast(6500 as bigint),
+            cast('2026-09-30 23:41:25+00' as timestamptz), cast('2026-09-30 23:55:25+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(20 as bigint), cast('save-s1-25-line-20' as varchar)
+          union all
+          select
+            cast(1 as integer), cast('save_written' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(25 as bigint), cast('s1-25' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(29 as integer), cast(6500 as bigint),
+            cast('2026-09-30 23:40:25+00' as timestamptz), cast('2026-09-30 23:55:25+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(2 as bigint), cast('save-s1-25-line-2' as varchar)
+          union all
+          select
+            cast(1 as integer), cast('save_written' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(26 as bigint), cast('s1-26' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(30 as integer), cast(6600 as bigint),
+            cast('2026-09-30 23:41:26+00' as timestamptz), cast('2026-09-30 23:55:26+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(20 as bigint), cast('save-s1-26-line-20' as varchar)
+          union all
+          select
+            cast(1 as integer), cast('save_written' as varchar), cast('0.3.0' as varchar),
+            cast('kpark1' as varchar), cast('s1' as varchar), cast(26 as bigint), cast('s1-26' as varchar),
+            cast(2 as integer), cast(3 as integer), cast(30 as integer), cast(6600 as bigint),
+            cast('2026-09-30 23:40:26+00' as timestamptz), cast('2026-09-30 23:55:26+00' as timestamptz),
+            cast('a.jsonl' as varchar), cast(2 as bigint), cast('save-s1-26-line-2' as varchar)
+    expect:
+      format: sql
+      rows: |
+        select
+          cast(1 as integer) as schema_version, cast('save_written' as varchar) as event_type,
+          cast('0.3.0' as varchar) as plugin_version, cast('kpark1' as varchar) as park_id,
+          cast('s1' as varchar) as session_id, cast(5 as bigint) as seq,
+          cast('s1-5' as varchar) as event_id, cast(2 as integer) as game_year,
+          cast(3 as integer) as game_month, cast(4 as integer) as game_day,
+          cast(5000 as bigint) as game_ticks_elapsed,
+          cast('2026-09-30 23:25:00+00' as timestamptz) as emitted_at,
+          cast('2026-09-30 23:31:00+00' as timestamptz) as received_at,
+          cast('a.jsonl' as varchar) as _raw_file, cast(4 as bigint) as _raw_line,
+          cast('save-from-a-line-4' as varchar) as save_id
+        union all
+        select
+          cast(1 as integer), cast('save_written' as varchar), cast('0.3.0' as varchar),
+          cast('kpark1' as varchar), cast('s1' as varchar), cast(8 as bigint),
+          cast('s1-8' as varchar), cast(2 as integer), cast(3 as integer), cast(6 as integer),
+          cast(6000 as bigint), cast('2026-09-30 23:40:00+00' as timestamptz),
+          cast('2026-09-30 23:41:00+00' as timestamptz), cast('a.jsonl' as varchar),
+          cast(12 as bigint), cast('save-single' as varchar)
+        union all
+        select
+          cast(1 as integer), cast('save_written' as varchar), cast('0.3.0' as varchar),
+          cast('kpark1' as varchar), cast('s1' as varchar), cast(10 as bigint),
+          cast('s1-10' as varchar), cast(2 as integer), cast(3 as integer), cast(7 as integer),
+          cast(7000 as bigint), cast('2026-09-30 23:00:00+00' as timestamptz),
+          cast('2026-09-30 23:00:00+00' as timestamptz), cast('a.jsonl' as varchar),
+          cast(30 as bigint), cast('save-s1-10-line-30' as varchar)
+        union all
+        select
+          cast(1 as integer), cast('save_written' as varchar), cast('0.3.0' as varchar),
+          cast('kpark1' as varchar), cast('s1' as varchar), cast(11 as bigint),
+          cast('s1-11' as varchar), cast(2 as integer), cast(3 as integer), cast(8 as integer),
+          cast(8000 as bigint), cast('2026-09-30 23:10:00+00' as timestamptz),
+          cast('2026-09-30 23:51:00+00' as timestamptz), cast('a.jsonl' as varchar),
+          cast(7 as bigint), cast('save-s1-11-line-7' as varchar)
+        union all
+        select
+          cast(1 as integer), cast('save_written' as varchar), cast('0.3.0' as varchar),
+          cast('kpark1' as varchar), cast('s1' as varchar), cast(12 as bigint),
+          cast('s1-12' as varchar), cast(2 as integer), cast(3 as integer), cast(9 as integer),
+          cast(9000 as bigint), cast('2026-09-30 23:10:00+00' as timestamptz),
+          cast('2026-09-30 23:52:00+00' as timestamptz), cast('b.jsonl' as varchar),
+          cast(3 as bigint), cast('save-s1-12-line-3' as varchar)
+        union all
+        select
+          cast(1 as integer), cast('save_written' as varchar), cast('0.3.0' as varchar),
+          cast('kpark1' as varchar), cast('s1' as varchar), cast(20 as bigint), cast('s1-20' as varchar),
+          cast(2 as integer), cast(3 as integer), cast(24 as integer), cast(6000 as bigint),
+          cast('2026-09-30 23:40:20+00' as timestamptz), cast('2026-09-30 23:55:20+00' as timestamptz),
+          cast('a.jsonl' as varchar), cast(2 as bigint), cast('save-s1-20-line-2' as varchar)
+        union all
+        select
+          cast(1 as integer), cast('save_written' as varchar), cast('0.3.0' as varchar),
+          cast('kpark1' as varchar), cast('s1' as varchar), cast(21 as bigint), cast('s1-21' as varchar),
+          cast(2 as integer), cast(3 as integer), cast(25 as integer), cast(6100 as bigint),
+          cast('2026-09-30 23:40:21+00' as timestamptz), cast('2026-09-30 23:55:21+00' as timestamptz),
+          cast('a.jsonl' as varchar), cast(2 as bigint), cast('save-s1-21-line-2' as varchar)
+        union all
+        select
+          cast(1 as integer), cast('save_written' as varchar), cast('0.3.0' as varchar),
+          cast('kpark1' as varchar), cast('s1' as varchar), cast(22 as bigint), cast('s1-22' as varchar),
+          cast(2 as integer), cast(3 as integer), cast(26 as integer), cast(6200 as bigint),
+          cast('2026-09-30 23:40:22+00' as timestamptz), cast('2026-09-30 23:55:22+00' as timestamptz),
+          cast('a.jsonl' as varchar), cast(2 as bigint), cast('save-s1-22-line-2' as varchar)
+        union all
+        select
+          cast(1 as integer), cast('save_written' as varchar), cast('0.3.0' as varchar),
+          cast('kpark1' as varchar), cast('s1' as varchar), cast(23 as bigint), cast('s1-23' as varchar),
+          cast(2 as integer), cast(3 as integer), cast(27 as integer), cast(6300 as bigint),
+          cast('2026-09-30 23:40:23+00' as timestamptz), cast('2026-09-30 23:55:23+00' as timestamptz),
+          cast('a.jsonl' as varchar), cast(2 as bigint), cast('save-s1-23-line-2' as varchar)
+        union all
+        select
+          cast(1 as integer), cast('save_written' as varchar), cast('0.3.0' as varchar),
+          cast('kpark1' as varchar), cast('s1' as varchar), cast(24 as bigint), cast('s1-24' as varchar),
+          cast(2 as integer), cast(3 as integer), cast(28 as integer), cast(6400 as bigint),
+          cast('2026-09-30 23:40:24+00' as timestamptz), cast('2026-09-30 23:55:24+00' as timestamptz),
+          cast('a.jsonl' as varchar), cast(2 as bigint), cast('save-s1-24-line-2' as varchar)
+        union all
+        select
+          cast(1 as integer), cast('save_written' as varchar), cast('0.3.0' as varchar),
+          cast('kpark1' as varchar), cast('s1' as varchar), cast(25 as bigint), cast('s1-25' as varchar),
+          cast(2 as integer), cast(3 as integer), cast(29 as integer), cast(6500 as bigint),
+          cast('2026-09-30 23:40:25+00' as timestamptz), cast('2026-09-30 23:55:25+00' as timestamptz),
+          cast('a.jsonl' as varchar), cast(2 as bigint), cast('save-s1-25-line-2' as varchar)
+        union all
+        select
+          cast(1 as integer), cast('save_written' as varchar), cast('0.3.0' as varchar),
+          cast('kpark1' as varchar), cast('s1' as varchar), cast(26 as bigint), cast('s1-26' as varchar),
+          cast(2 as integer), cast(3 as integer), cast(30 as integer), cast(6600 as bigint),
+          cast('2026-09-30 23:40:26+00' as timestamptz), cast('2026-09-30 23:55:26+00' as timestamptz),
+          cast('a.jsonl' as varchar), cast(2 as bigint), cast('save-s1-26-line-2' as varchar)

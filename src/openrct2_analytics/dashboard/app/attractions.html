@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Company Report: Attractions</title>
+<link rel="stylesheet" href="app.css">
+</head><body class="attractions"><div class="report">
+<header class="title"><h1>Theme Park Company · Attractions</h1><span id="asof"></span></header>
+<div class="canvas">
+ <aside class="slicers" aria-label="Filters">
+  <div class="v" id="parkBox"></div>
+  <div class="v"><h2>Company year</h2><div class="chips" id="yrs" role="group" aria-label="Company year"></div></div>
+  <div class="v"><h2>Month</h2><div class="chips" id="mos" role="group" aria-label="Month"></div></div>
+  <div class="v help"><b id="runTitle"></b> Press Play or drag the slider. A ride that earns nothing drops into the grey lane. Switch to Ageing to watch riders fall as a ride gets older, and jump back after an age reset. Click a ride to pin its trail. <span class="note sample"></span></div>
+ </aside>
+ <main class="main">
+  <div class="v finding"><p id="finding" aria-live="polite"></p></div>
+  <div class="v">
+   <div class="h2row"><h2 id="bubTitle"></h2><div class="seg" id="mode" role="group" aria-label="Chart view"><button type="button" data-m="earn">Earning power</button><button type="button" data-m="age">Ageing</button></div></div>
+   <svg id="bub" viewBox="0 0 676 566" role="group" aria-label="Rides plotted for the chosen month"></svg>
+   <div class="row" style="margin-top:6px">
+    <button class="btn play" id="play" type="button">Play</button>
+    <label for="when" class="sr">Month</label><input type="range" id="when" min="0" max="31" step="1" value="0">
+    <output id="whenOut" for="when"></output>
+   </div>
+  </div>
+  <div class="v">
+   <h2 id="tblTitle"></h2>
+   <table id="tbl"><colgroup><col style="width:140px"><col style="width:46px"><col style="width:58px"><col style="width:54px"><col></colgroup><thead><tr></tr></thead><tbody></tbody></table>
+   <div class="key" aria-hidden="true"><span><i style="background:#12239e"></i>darker = more profit</span><span><i style="border:1px solid #a19f9d"></i>closed</span><span><i style="border:1.5px solid #e66c37"></i>open, no riders</span><span><i style="background:#f2c811;border-radius:50%;width:6px;height:6px"></i>age reset</span></div>
+  </div>
+ </main>
+</div>
+<nav class="tabs" aria-label="Report pages"></nav>
+</div>
+<script src="data.js"></script>
+<script src="shared.js"></script>
+<script src="attractions.js"></script>
+</body></html>

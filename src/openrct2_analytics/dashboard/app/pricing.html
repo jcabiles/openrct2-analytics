@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Company Report: Pricing</title>
+<link rel="stylesheet" href="app.css">
+</head><body class="pricing"><div class="report">
+<header class="title"><h1>Theme Park Company · Pricing</h1><span id="asof"></span></header>
+<div class="canvas">
+ <aside class="slicers" aria-label="Filters">
+  <div class="v" id="parkBox"></div>
+  <div class="v"><h2>Company year</h2><div class="chips" id="yrs" role="group" aria-label="Company year of the price change"></div></div>
+  <div class="v help"><b>Test each price change yourself.</b> The slider sets how many days before and after a change are compared. Drag it, or drag across the right-hand chart, and watch whether the verdict holds. Click a row to see that ride day by day.</div>
+  <div class="v help">Observational: the number of guests, marketing and ride age changed at the same time as prices. Rows say when an age reset came with the change. <span class="note sample"></span></div>
+ </aside>
+ <main class="main">
+  <div class="v finding"><p id="finding" aria-live="polite"></p></div>
+  <div class="v">
+   <h2>Every price change <small>profit per open day, before and after</small></h2>
+   <div class="row probe"><label for="win">Days compared on each side</label><input type="range" id="win" min="7" max="60" step="1" value="30"><output id="winOut" for="win"></output></div>
+   <svg id="score" viewBox="0 0 566 560" role="group" aria-label="Price changes; choose one to see it day by day"></svg>
+   <p class="note" id="left"></p>
+  </div>
+  <div class="v">
+   <h2 id="detTitle"></h2>
+   <svg id="detail" viewBox="0 0 586 610" role="img" aria-labelledby="detDesc"><desc id="detDesc"></desc></svg>
+  </div>
+ </main>
+</div>
+<nav class="tabs" aria-label="Report pages"></nav>
+</div>
+<script src="data.js"></script>
+<script src="shared.js"></script>
+<script src="pricing.js"></script>
+</body></html>

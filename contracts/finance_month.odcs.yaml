@@ -1,0 +1,208 @@
+apiVersion: v3.2.0
+kind: DataContract
+id: finance_month
+name: finance_month
+version: 1.8.0
+status: active
+description:
+  purpose: Monthly finance statement payload, one event per session per closed game month.
+servers:
+  - server: parquet_through_duckdb
+    type: duckdb
+    database: __DATABASE__
+    schema: main
+schema:
+  - name: finance_month
+    physicalType: view
+    description: >-
+      One row per closed game month, read in the day-1 callback of the next month, which runs at the end of that
+      month's first tick; the statement month is the month before the envelope date. The data is Parquet (v1/finance_month.parquet), checked through a throwaway DuckDB
+      view. Money is in tenths of a dollar (game money unit) on the game calendar clock: income is positive and
+      spending negative, and a refund can make a spending line positive. A reload can repeat one park's month in two
+      sessions, but never twice in one session. A cheat that sets the game date back could mislabel a statement or repeat a month
+      within a session (the label comes from the date, the figures from the history); the contract's key then fails the
+      capture, by design.
+    properties:
+      - name: session_id
+        logicalType: string
+        physicalType: VARCHAR
+        required: true
+        primaryKey: true
+        primaryKeyPosition: 1
+        description: Plugin start identifier; text, no unit. Part of the grain.
+      - name: statement_year
+        logicalType: integer
+        physicalType: INTEGER
+        required: true
+        primaryKey: true
+        primaryKeyPosition: 2
+        logicalTypeOptions:
+          minimum: 1
+        description: In-game year of the closed month, from 1; game calendar clock. Part of the grain.
+      - name: statement_month
+        logicalType: integer
+        physicalType: INTEGER
+        required: true
+        primaryKey: true
+        primaryKeyPosition: 3
+        logicalTypeOptions:
+          minimum: 0
+          maximum: 7
+        description: In-game month that closed, 0 to 7 (March = 0); game calendar clock. Part of the grain.
+      - name: ride_construction_tenths
+        logicalType: integer
+        physicalType: BIGINT
+        required: true
+        description: >-
+          The closed month's ride construction total, in tenths of a dollar (game money unit); game calendar month. Income is
+          positive and spending negative.
+      - name: ride_runningcosts_tenths
+        logicalType: integer
+        physicalType: BIGINT
+        required: true
+        description: >-
+          The closed month's ride running costs total, in tenths of a dollar (game money unit); game calendar month. Income is
+          positive and spending negative.
+      - name: land_purchase_tenths
+        logicalType: integer
+        physicalType: BIGINT
+        required: true
+        description: >-
+          The closed month's land purchase total, in tenths of a dollar (game money unit); game calendar month. Income is
+          positive and spending negative.
+      - name: landscaping_tenths
+        logicalType: integer
+        physicalType: BIGINT
+        required: true
+        description: >-
+          The closed month's landscaping total, in tenths of a dollar (game money unit); game calendar month. Income is
+          positive and spending negative.
+      - name: park_entrance_tickets_tenths
+        logicalType: integer
+        physicalType: BIGINT
+        required: true
+        description: >-
+          The closed month's park entrance tickets total, in tenths of a dollar (game money unit); game calendar month. Income is
+          positive and spending negative.
+      - name: park_ride_tickets_tenths
+        logicalType: integer
+        physicalType: BIGINT
+        required: true
+        description: >-
+          The closed month's ride tickets total, in tenths of a dollar (game money unit); game calendar month. Income is
+          positive and spending negative.
+      - name: shop_sales_tenths
+        logicalType: integer
+        physicalType: BIGINT
+        required: true
+        description: >-
+          The closed month's shop sales total, in tenths of a dollar (game money unit); game calendar month. Income is
+          positive and spending negative.
+      - name: shop_stock_tenths
+        logicalType: integer
+        physicalType: BIGINT
+        required: true
+        description: >-
+          The closed month's shop stock total, in tenths of a dollar (game money unit); game calendar month. Income is
+          positive and spending negative.
+      - name: food_drink_sales_tenths
+        logicalType: integer
+        physicalType: BIGINT
+        required: true
+        description: >-
+          The closed month's food and drink sales total, in tenths of a dollar (game money unit); game calendar month. Income is
+          positive and spending negative.
+      - name: food_drink_stock_tenths
+        logicalType: integer
+        physicalType: BIGINT
+        required: true
+        description: >-
+          The closed month's food and drink stock total, in tenths of a dollar (game money unit); game calendar month. Income is
+          positive and spending negative.
+      - name: wages_tenths
+        logicalType: integer
+        physicalType: BIGINT
+        required: true
+        description: >-
+          The closed month's staff wages total, in tenths of a dollar (game money unit); game calendar month. Income is
+          positive and spending negative.
+      - name: marketing_tenths
+        logicalType: integer
+        physicalType: BIGINT
+        required: true
+        description: >-
+          The closed month's marketing total, in tenths of a dollar (game money unit); game calendar month. Income is
+          positive and spending negative.
+      - name: research_tenths
+        logicalType: integer
+        physicalType: BIGINT
+        required: true
+        description: >-
+          The closed month's research total, in tenths of a dollar (game money unit); game calendar month. Income is
+          positive and spending negative.
+      - name: interest_tenths
+        logicalType: integer
+        physicalType: BIGINT
+        required: true
+        description: >-
+          The closed month's loan interest total, in tenths of a dollar (game money unit); game calendar month. Income is
+          positive and spending negative.
+      - name: cash_tenths
+        logicalType: integer
+        physicalType: BIGINT
+        required: true
+        description: >-
+          Park cash in tenths of a dollar (game money unit), may be negative; read in the day-1 callback of the month
+          after the statement month, which runs at the end of that month's first tick, so it can include
+          new_month_booked_tenths.
+      - name: bank_loan_tenths
+        logicalType: integer
+        physicalType: BIGINT
+        required: true
+        logicalTypeOptions:
+          minimum: 0
+        description: >-
+          Bank loan outstanding in tenths of a dollar (game money unit), never negative; read at the same moment as
+          cash_tenths.
+      - name: new_month_booked_tenths
+        logicalType: integer
+        physicalType: BIGINT
+        required: false
+        description: >-
+          The money already booked to the new month when the statement was read, the sum of index 0 of the 14
+          expenditure histories, in tenths of a dollar (game money unit); game calendar; signed like the ledger lines.
+          Absent from statements sent by plugin 0.5.0 and earlier.
+    quality:
+      - type: sql
+        description: every statement is read on game day 1
+        query: SELECT COUNT(*) FROM {object} WHERE game_day <> 1
+        mustBe: 0
+      - type: sql
+        description: the statement month is the month before the envelope date
+        query: >-
+          SELECT COUNT(*) FROM {object} WHERE NOT (
+          (game_month = 0 AND statement_month = 7 AND statement_year = game_year - 1)
+          OR (game_month > 0 AND statement_month = game_month - 1 AND statement_year = game_year))
+        mustBe: 0
+      - type: sql
+        description: every money field is a whole number
+        query: >-
+          SELECT COUNT(*) FROM {object} WHERE
+          ride_construction_tenths <> CAST(ride_construction_tenths AS BIGINT)
+          OR ride_runningcosts_tenths <> CAST(ride_runningcosts_tenths AS BIGINT)
+          OR land_purchase_tenths <> CAST(land_purchase_tenths AS BIGINT)
+          OR landscaping_tenths <> CAST(landscaping_tenths AS BIGINT)
+          OR park_entrance_tickets_tenths <> CAST(park_entrance_tickets_tenths AS BIGINT)
+          OR park_ride_tickets_tenths <> CAST(park_ride_tickets_tenths AS BIGINT)
+          OR shop_sales_tenths <> CAST(shop_sales_tenths AS BIGINT)
+          OR shop_stock_tenths <> CAST(shop_stock_tenths AS BIGINT)
+          OR food_drink_sales_tenths <> CAST(food_drink_sales_tenths AS BIGINT)
+          OR food_drink_stock_tenths <> CAST(food_drink_stock_tenths AS BIGINT)
+          OR wages_tenths <> CAST(wages_tenths AS BIGINT)
+          OR marketing_tenths <> CAST(marketing_tenths AS BIGINT)
+          OR research_tenths <> CAST(research_tenths AS BIGINT)
+          OR interest_tenths <> CAST(interest_tenths AS BIGINT)
+          OR cash_tenths <> CAST(cash_tenths AS BIGINT)
+          OR bank_loan_tenths <> CAST(bank_loan_tenths AS BIGINT)
+          OR new_month_booked_tenths <> CAST(new_month_booked_tenths AS BIGINT)
+        mustBe: 0

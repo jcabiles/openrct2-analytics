@@ -1,0 +1,94 @@
+---
+permalink: "{{ 'guide/index.html' }}"
+---
+<!doctype html>
+<html lang="en" data-palette="rct-exact" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="../assets/favicon.svg">
+  <title>{% passage "guide-site-labels.md", "guide-title", "text" %}</title>
+  <link rel="stylesheet" href="../assets/css/tokens.css">
+  <link rel="stylesheet" href="../assets/css/base.css">
+  <link rel="stylesheet" href="../assets/css/guide.css">
+</head>
+<body>
+{#- The guide's words live in docs/showcase/story/: install-by-hand.md (setup), how-the-game-works.md
+    (play) and fix-a-problem.md (help), rendered in that order; the page labels live in
+    guide-site-labels.md. Each passage that starts with a heading brings its own heading; the section
+    ids equal GitHub's anchors for those headings, so a link such as #for-whoever-helps-you works on
+    GitHub and on this page. Passages whose names end in -github link the three files to each other on
+    GitHub and are never rendered here. The sign-in step is a section of its own, not a .guide-step:
+    it is optional and has two commands, while the page check counts exactly twelve one-command steps. #}
+<a class="skip" href="#main">{% passage "guide-site-labels.md", "guide-skip", "text" %}</a>
+<header class="guide-head col">
+  <h1>{% passage "guide-site-labels.md", "guide-title", "inline" %}</h1>
+  <a class="guide-home" href="../">{% passage "guide-site-labels.md", "guide-home", "inline" %}</a>
+</header>
+<main id="main" class="guide col">
+  <section id="install" aria-labelledby="install-h">
+    <h2 id="install-h">{% passage "install-by-hand.md", "install-h", "inline" %}</h2>
+    <div class="guide-lead">{% passage "install-by-hand.md", "guide-bottom-line" %}</div>
+    {% passage "install-by-hand.md", "install-before" %}
+    {% set steps = [
+      "step-dev-tools", "step-homebrew", "step-homebrew-path", "step-tools", "step-node-path",
+      "step-direnv-hook", "step-check-tools", "step-clone", "step-cd", "step-setup",
+      "step-direnv-allow", "step-launcher"
+    ] %}
+    {% for step in steps %}
+    {% if step == "step-clone" %}
+    <section class="guide-sign-in" id="step-sign-in">
+      {% passage "install-by-hand.md", "step-sign-in-title" %}
+      {% passage "install-by-hand.md", "step-sign-in-do" %}
+      <div class="step-command">{% passage "install-by-hand.md", "step-sign-in-command-1" %}</div>
+      {% passage "install-by-hand.md", "step-sign-in-between" %}
+      <div class="step-command">{% passage "install-by-hand.md", "step-sign-in-command-2" %}</div>
+      {% passage "install-by-hand.md", "step-sign-in-answers" %}
+      <div class="step-see">{% passage "install-by-hand.md", "step-sign-in-see" %}</div>
+    </section>
+    {% endif %}
+    <section class="guide-step" id="{{ step }}">
+      {% passage "install-by-hand.md", step ~ "-title" %}
+      {% passage "install-by-hand.md", step ~ "-do" %}
+      <div class="step-command">{% passage "install-by-hand.md", step ~ "-command" %}</div>
+      <div class="step-see">{% passage "install-by-hand.md", step ~ "-see" %}</div>
+      <div class="step-fix">{% passage "install-by-hand.md", step ~ "-fix-1" %}</div>
+    </section>
+    {% endfor %}
+    <section id="youre-ready-when">{% passage "install-by-hand.md", "install-done" %}</section>
+  </section>
+  <section id="how-it-works" aria-labelledby="how-it-works-h">
+    <h2 id="how-it-works-h">{% passage "how-the-game-works.md", "how-h", "inline" %}</h2>
+    {% passage "how-the-game-works.md", "how-contents" %}
+    {% set topics = [
+      { id: "what-theme-park-enterprise-is", passage: "how-what" },
+      { id: "three-words-the-app-uses", passage: "how-words" },
+      { id: "your-first-play", passage: "how-first-play" },
+      { id: "continue-a-park", passage: "how-continue" },
+      { id: "try-things-in-a-sandbox-park", passage: "how-sandbox" },
+      { id: "open-park-2", passage: "how-park-2" },
+      { id: "run-a-finished-park-on-autopilot", passage: "how-autopilot" },
+      { id: "read-your-dashboard", passage: "how-dashboard" }
+    ] %}
+    {% for topic in topics %}
+    <section class="guide-topic" id="{{ topic.id }}">{% passage "how-the-game-works.md", topic.passage %}</section>
+    {% endfor %}
+  </section>
+  <section id="fix-a-problem" aria-labelledby="fix-a-problem-h">
+    <h2 id="fix-a-problem-h">{% passage "fix-a-problem.md", "fix-h", "inline" %}</h2>
+    {% passage "fix-a-problem.md", "fix-intro" %}
+    {% set groups = [
+      { id: "while-you-set-up", passage: "fix-setup" },
+      { id: "when-you-start-a-play", passage: "fix-start" },
+      { id: "after-a-play", passage: "fix-after" },
+      { id: "autopilot-problems", passage: "fix-autopilot" },
+      { id: "advanced", passage: "fix-advanced" },
+      { id: "for-whoever-helps-you", passage: "fix-helper" }
+    ] %}
+    {% for group in groups %}
+    <section class="guide-topic" id="{{ group.id }}">{% passage "fix-a-problem.md", group.passage %}</section>
+    {% endfor %}
+  </section>
+</main>
+</body>
+</html>

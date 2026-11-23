@@ -1,0 +1,574 @@
+version: 2
+
+models:
+  - name: int_park_years__year_close
+    description: >-
+      Answers whether each expected park has closed each company year, and whether the company year as a whole is
+      closed, so a company-year figure is published only from a year no park can still change. Not yet reconciled:
+      the register counts kept monthly statements and does not tie them to a ledger or an outside report.
+      Grain: one row per registered park and company year, from the park's company_start_year in the current
+      registry to the latest company year with a kept statement in any park; key park_year_close_key. A park is
+      expected from its first full company year. Its partial first season (first captured day in game month 1 or
+      later of its start year) has status partial_first_season, is exempt, and never holds a year open.
+      Otherwise the status is complete (all eight statements kept), incomplete (a statement is missing and the park
+      has a kept statement in a later company year, or a kept month of the same year comes after a missing reportable
+      month) or open (every missing reportable month comes after the last kept month of the year, which includes a
+      year with nothing kept, and no later statement exists).
+      A company year is closed only when no park is open or incomplete and at least one park is complete.
+      Unit: statements, years; clock: company date (year).
+    meta:
+      expected_min_rows: 1
+    data_tests:
+      - rows_on_sample:
+          arguments:
+            expected: 1
+    columns:
+      - name: park_year_close_key
+        description: "Park ID, a vertical bar and the company year; text; no unit; clock: company date (year)."
+        data_tests:
+          - unique
+          - not_null
+      - name: park_id
+        description: "The park's identifier, the same text the plugin sends; no unit; no clock."
+        data_tests: [not_null]
+      - name: company_year
+        description: "Company year the row covers; unit: year; clock: company date (year)."
+        data_tests: [not_null]
+      - name: first_captured_company_year
+        description: "Company year of the park's earliest snapshot on any timeline; null when the park has no snapshot or its game year cannot map; unit: year; clock: company date (year)."
+      - name: is_partial_first_season
+        description: "True when this is the park's start year and its first captured day is in that year at game month 1 or later; true or false; no unit; clock: company date (year)."
+        data_tests: [not_null]
+      - name: first_reportable_month
+        description: "First game month the park could report this year: the first captured day's month for a partial first season, else 0; unit: game month, 0 is March; clock: game calendar."
+        data_tests: [not_null]
+      - name: statements_expected
+        description: "Statements the park owes this year, 8 minus first_reportable_month; unit: statements; clock: company date (year)."
+        data_tests: [not_null]
+      - name: statements_kept
+        description: "Distinct game months with a kept statement this year; unit: statements; clock: company date (year)."
+        data_tests: [not_null]
+      - name: missing_statement_months
+        description: "Game months from first_reportable_month to 7 with no kept statement, ascending and comma-separated, empty when none; shown but not owed for a partial first season; text; unit: game month, 0 is March; clock: game calendar."
+        data_tests: [not_null]
+      - name: has_later_statement
+        description: "True when the park has a kept statement in a later company year; true or false; no unit; clock: company date (year)."
+        data_tests: [not_null]
+      - name: has_kept_month_after_gap
+        description: "True when the park's latest kept month this year is later than its earliest missing reportable month; false when nothing is missing; months before first_reportable_month never count; ignored for a partial first season; true or false; no unit; clock: game calendar within the company year."
+        data_tests: [not_null]
+      - name: close_status
+        description: "partial_first_season, complete, incomplete or open, the first that applies in that order; incomplete when a later year has a kept statement or a kept month of this year comes after a missing reportable month, open when every missing reportable month comes after the last kept month; text; no unit; clock: company date (year)."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [complete, incomplete, open, partial_first_season]
+      - name: is_company_year_closed
+        description: "True on every row of a company year in which no park is open or incomplete and at least one is complete; true or false; no unit; clock: company date (year)."
+        data_tests: [not_null]
+
+
+unit_tests:
+  - name: int_park_years__year_close_closes_with_a_partial_park
+    description: >-
+      It proves that two parks with months 0 to 7 close their company year even when a third park is in its partial
+      first season, which is flagged, owes only its remaining months and never holds the year open, and that the next
+      year stays open with all three parks expected.
+    model: int_park_years__year_close
+    given:
+      - input: ref('int_park_registry__current')
+        format: sql
+        rows: |
+          select cast('park_a' as varchar) as park_id, cast(2000 as integer) as company_start_year
+          union all
+          select cast('park_b' as varchar), cast(2000 as integer)
+          union all
+          select cast('park_c' as varchar), cast(2000 as integer)
+      - input: ref('int_park_years__registry_mapped')
+        format: sql
+        rows: |
+          select cast('park_a' as varchar) as park_id, cast(9 as integer) as game_year, cast(2000 as integer) as company_year
+          union all
+          select cast('park_a' as varchar), cast(10 as integer), cast(2001 as integer)
+          union all
+          select cast('park_b' as varchar), cast(4 as integer), cast(2000 as integer)
+          union all
+          select cast('park_b' as varchar), cast(5 as integer), cast(2001 as integer)
+          union all
+          select cast('park_c' as varchar), cast(1 as integer), cast(2000 as integer)
+      - input: ref('stg_park_snapshot')
+        format: sql
+        rows: |
+          select cast('park_a' as varchar) as park_id, cast(9 as integer) as game_year, cast(0 as integer) as game_month, cast(1 as integer) as game_day
+          union all
+          select cast('park_b' as varchar), cast(4 as integer), cast(0 as integer), cast(1 as integer)
+          union all
+          select cast('park_c' as varchar), cast(1 as integer), cast(3 as integer), cast(2 as integer)
+      - input: ref('fct_park_month')
+        format: sql
+        rows: |
+          select cast('park_a' as varchar) as park_id, cast(2000 as integer) as company_year, cast(0 as integer) as statement_month
+          union all
+          select cast('park_a' as varchar), cast(2000 as integer), cast(1 as integer)
+          union all
+          select cast('park_a' as varchar), cast(2000 as integer), cast(2 as integer)
+          union all
+          select cast('park_a' as varchar), cast(2000 as integer), cast(3 as integer)
+          union all
+          select cast('park_a' as varchar), cast(2000 as integer), cast(4 as integer)
+          union all
+          select cast('park_a' as varchar), cast(2000 as integer), cast(5 as integer)
+          union all
+          select cast('park_a' as varchar), cast(2000 as integer), cast(6 as integer)
+          union all
+          select cast('park_a' as varchar), cast(2000 as integer), cast(7 as integer)
+          union all
+          select cast('park_a' as varchar), cast(2001 as integer), cast(0 as integer)
+          union all
+          select cast('park_b' as varchar), cast(2000 as integer), cast(0 as integer)
+          union all
+          select cast('park_b' as varchar), cast(2000 as integer), cast(1 as integer)
+          union all
+          select cast('park_b' as varchar), cast(2000 as integer), cast(2 as integer)
+          union all
+          select cast('park_b' as varchar), cast(2000 as integer), cast(3 as integer)
+          union all
+          select cast('park_b' as varchar), cast(2000 as integer), cast(4 as integer)
+          union all
+          select cast('park_b' as varchar), cast(2000 as integer), cast(5 as integer)
+          union all
+          select cast('park_b' as varchar), cast(2000 as integer), cast(6 as integer)
+          union all
+          select cast('park_b' as varchar), cast(2000 as integer), cast(7 as integer)
+          union all
+          select cast('park_b' as varchar), cast(2001 as integer), cast(0 as integer)
+          union all
+          select cast('park_c' as varchar), cast(2000 as integer), cast(3 as integer)
+          union all
+          select cast('park_c' as varchar), cast(2000 as integer), cast(4 as integer)
+    expect:
+      rows:
+        - {park_id: 'park_a', company_year: 2000, close_status: 'complete', is_company_year_closed: true, first_captured_company_year: 2000, is_partial_first_season: false, first_reportable_month: 0, statements_expected: 8, statements_kept: 8, missing_statement_months: '', has_later_statement: true}
+        - {park_id: 'park_b', company_year: 2000, close_status: 'complete', is_company_year_closed: true, first_captured_company_year: 2000, is_partial_first_season: false, first_reportable_month: 0, statements_expected: 8, statements_kept: 8, missing_statement_months: '', has_later_statement: true}
+        - {park_id: 'park_c', company_year: 2000, close_status: 'partial_first_season', is_company_year_closed: true, first_captured_company_year: 2000, is_partial_first_season: true, first_reportable_month: 3, statements_expected: 5, statements_kept: 2, missing_statement_months: '5,6,7', has_later_statement: false}
+        - {park_id: 'park_a', company_year: 2001, close_status: 'open', is_company_year_closed: false, first_captured_company_year: 2000, is_partial_first_season: false, first_reportable_month: 0, statements_expected: 8, statements_kept: 1, missing_statement_months: '1,2,3,4,5,6,7', has_later_statement: false}
+        - {park_id: 'park_b', company_year: 2001, close_status: 'open', is_company_year_closed: false, first_captured_company_year: 2000, is_partial_first_season: false, first_reportable_month: 0, statements_expected: 8, statements_kept: 1, missing_statement_months: '1,2,3,4,5,6,7', has_later_statement: false}
+        - {park_id: 'park_c', company_year: 2001, close_status: 'open', is_company_year_closed: false, first_captured_company_year: 2000, is_partial_first_season: false, first_reportable_month: 0, statements_expected: 8, statements_kept: 0, missing_statement_months: '0,1,2,3,4,5,6,7', has_later_statement: false}
+
+  - name: int_park_years__year_close_flags_the_hidden_statement
+    description: >-
+      It proves that removing one statement of a park whose later statement exists turns its year incomplete and keeps
+      the company year from closing.
+    model: int_park_years__year_close
+    given:
+      - input: ref('int_park_registry__current')
+        format: sql
+        rows: |
+          select cast('park_a' as varchar) as park_id, cast(2000 as integer) as company_start_year
+          union all
+          select cast('park_b' as varchar), cast(2000 as integer)
+          union all
+          select cast('park_c' as varchar), cast(2000 as integer)
+      - input: ref('int_park_years__registry_mapped')
+        format: sql
+        rows: |
+          select cast('park_a' as varchar) as park_id, cast(9 as integer) as game_year, cast(2000 as integer) as company_year
+          union all
+          select cast('park_a' as varchar), cast(10 as integer), cast(2001 as integer)
+          union all
+          select cast('park_b' as varchar), cast(4 as integer), cast(2000 as integer)
+          union all
+          select cast('park_b' as varchar), cast(5 as integer), cast(2001 as integer)
+          union all
+          select cast('park_c' as varchar), cast(1 as integer), cast(2000 as integer)
+      - input: ref('stg_park_snapshot')
+        format: sql
+        rows: |
+          select cast('park_a' as varchar) as park_id, cast(9 as integer) as game_year, cast(0 as integer) as game_month, cast(1 as integer) as game_day
+          union all
+          select cast('park_b' as varchar), cast(4 as integer), cast(0 as integer), cast(1 as integer)
+          union all
+          select cast('park_c' as varchar), cast(1 as integer), cast(3 as integer), cast(2 as integer)
+      - input: ref('fct_park_month')
+        format: sql
+        rows: |
+          select cast('park_a' as varchar) as park_id, cast(2000 as integer) as company_year, cast(0 as integer) as statement_month
+          union all
+          select cast('park_a' as varchar), cast(2000 as integer), cast(1 as integer)
+          union all
+          select cast('park_a' as varchar), cast(2000 as integer), cast(2 as integer)
+          union all
+          select cast('park_a' as varchar), cast(2000 as integer), cast(3 as integer)
+          union all
+          select cast('park_a' as varchar), cast(2000 as integer), cast(4 as integer)
+          union all
+          select cast('park_a' as varchar), cast(2000 as integer), cast(5 as integer)
+          union all
+          select cast('park_a' as varchar), cast(2000 as integer), cast(6 as integer)
+          union all
+          select cast('park_a' as varchar), cast(2000 as integer), cast(7 as integer)
+          union all
+          select cast('park_a' as varchar), cast(2001 as integer), cast(0 as integer)
+          union all
+          select cast('park_b' as varchar), cast(2000 as integer), cast(0 as integer)
+          union all
+          select cast('park_b' as varchar), cast(2000 as integer), cast(1 as integer)
+          union all
+          select cast('park_b' as varchar), cast(2000 as integer), cast(2 as integer)
+          union all
+          select cast('park_b' as varchar), cast(2000 as integer), cast(3 as integer)
+          union all
+          select cast('park_b' as varchar), cast(2000 as integer), cast(5 as integer)
+          union all
+          select cast('park_b' as varchar), cast(2000 as integer), cast(6 as integer)
+          union all
+          select cast('park_b' as varchar), cast(2000 as integer), cast(7 as integer)
+          union all
+          select cast('park_b' as varchar), cast(2001 as integer), cast(0 as integer)
+          union all
+          select cast('park_c' as varchar), cast(2000 as integer), cast(3 as integer)
+          union all
+          select cast('park_c' as varchar), cast(2000 as integer), cast(4 as integer)
+    expect:
+      rows:
+        - {park_id: 'park_a', company_year: 2000, close_status: 'complete', is_company_year_closed: false, first_captured_company_year: 2000, is_partial_first_season: false, first_reportable_month: 0, statements_expected: 8, statements_kept: 8, missing_statement_months: '', has_later_statement: true}
+        - {park_id: 'park_b', company_year: 2000, close_status: 'incomplete', is_company_year_closed: false, first_captured_company_year: 2000, is_partial_first_season: false, first_reportable_month: 0, statements_expected: 8, statements_kept: 7, missing_statement_months: '4', has_later_statement: true}
+        - {park_id: 'park_c', company_year: 2000, close_status: 'partial_first_season', is_company_year_closed: false, first_captured_company_year: 2000, is_partial_first_season: true, first_reportable_month: 3, statements_expected: 5, statements_kept: 2, missing_statement_months: '5,6,7', has_later_statement: false}
+        - {park_id: 'park_a', company_year: 2001, close_status: 'open', is_company_year_closed: false, first_captured_company_year: 2000, is_partial_first_season: false, first_reportable_month: 0, statements_expected: 8, statements_kept: 1, missing_statement_months: '1,2,3,4,5,6,7', has_later_statement: false}
+        - {park_id: 'park_b', company_year: 2001, close_status: 'open', is_company_year_closed: false, first_captured_company_year: 2000, is_partial_first_season: false, first_reportable_month: 0, statements_expected: 8, statements_kept: 1, missing_statement_months: '1,2,3,4,5,6,7', has_later_statement: false}
+        - {park_id: 'park_c', company_year: 2001, close_status: 'open', is_company_year_closed: false, first_captured_company_year: 2000, is_partial_first_season: false, first_reportable_month: 0, statements_expected: 8, statements_kept: 0, missing_statement_months: '0,1,2,3,4,5,6,7', has_later_statement: false}
+
+  - name: int_park_years__year_close_keeps_a_year_open_only_for_trailing_missing_months
+    description: >-
+      It proves that a year stays open when only trailing months are missing and no later statement exists, and turns
+      incomplete when a missing month lies before a kept month of the same year, and that the company year does not
+      close.
+    model: int_park_years__year_close
+    given:
+      - input: ref('int_park_registry__current')
+        format: sql
+        rows: |
+          select cast('park_a' as varchar) as park_id, cast(2000 as integer) as company_start_year
+          union all
+          select cast('park_b' as varchar), cast(2000 as integer)
+          union all
+          select cast('park_c' as varchar), cast(2000 as integer)
+      - input: ref('int_park_years__registry_mapped')
+        format: sql
+        rows: |
+          select cast('park_a' as varchar) as park_id, cast(9 as integer) as game_year, cast(2000 as integer) as company_year
+          union all
+          select cast('park_a' as varchar), cast(10 as integer), cast(2001 as integer)
+          union all
+          select cast('park_b' as varchar), cast(4 as integer), cast(2000 as integer)
+          union all
+          select cast('park_b' as varchar), cast(5 as integer), cast(2001 as integer)
+          union all
+          select cast('park_c' as varchar), cast(1 as integer), cast(2000 as integer)
+      - input: ref('stg_park_snapshot')
+        format: sql
+        rows: |
+          select cast('park_a' as varchar) as park_id, cast(9 as integer) as game_year, cast(0 as integer) as game_month, cast(1 as integer) as game_day
+          union all
+          select cast('park_b' as varchar), cast(4 as integer), cast(0 as integer), cast(1 as integer)
+          union all
+          select cast('park_c' as varchar), cast(1 as integer), cast(3 as integer), cast(2 as integer)
+      - input: ref('fct_park_month')
+        format: sql
+        rows: |
+          select cast('park_a' as varchar) as park_id, cast(2000 as integer) as company_year, cast(0 as integer) as statement_month
+          union all
+          select cast('park_a' as varchar), cast(2000 as integer), cast(1 as integer)
+          union all
+          select cast('park_a' as varchar), cast(2000 as integer), cast(2 as integer)
+          union all
+          select cast('park_a' as varchar), cast(2000 as integer), cast(3 as integer)
+          union all
+          select cast('park_a' as varchar), cast(2000 as integer), cast(4 as integer)
+          union all
+          select cast('park_a' as varchar), cast(2000 as integer), cast(5 as integer)
+          union all
+          select cast('park_a' as varchar), cast(2000 as integer), cast(6 as integer)
+          union all
+          select cast('park_a' as varchar), cast(2000 as integer), cast(7 as integer)
+          union all
+          select cast('park_a' as varchar), cast(2001 as integer), cast(0 as integer)
+          union all
+          select cast('park_b' as varchar), cast(2000 as integer), cast(0 as integer)
+          union all
+          select cast('park_b' as varchar), cast(2000 as integer), cast(1 as integer)
+          union all
+          select cast('park_b' as varchar), cast(2000 as integer), cast(2 as integer)
+          union all
+          select cast('park_b' as varchar), cast(2000 as integer), cast(3 as integer)
+          union all
+          select cast('park_b' as varchar), cast(2000 as integer), cast(5 as integer)
+          union all
+          select cast('park_b' as varchar), cast(2000 as integer), cast(6 as integer)
+          union all
+          select cast('park_b' as varchar), cast(2000 as integer), cast(7 as integer)
+          union all
+          select cast('park_c' as varchar), cast(2000 as integer), cast(3 as integer)
+          union all
+          select cast('park_c' as varchar), cast(2000 as integer), cast(4 as integer)
+    expect:
+      rows:
+        - {park_id: 'park_a', company_year: 2000, close_status: 'complete', is_company_year_closed: false, first_captured_company_year: 2000, is_partial_first_season: false, first_reportable_month: 0, statements_expected: 8, statements_kept: 8, missing_statement_months: '', has_later_statement: true, has_kept_month_after_gap: false}
+        - {park_id: 'park_b', company_year: 2000, close_status: 'incomplete', is_company_year_closed: false, first_captured_company_year: 2000, is_partial_first_season: false, first_reportable_month: 0, statements_expected: 8, statements_kept: 7, missing_statement_months: '4', has_later_statement: false, has_kept_month_after_gap: true}
+        - {park_id: 'park_c', company_year: 2000, close_status: 'partial_first_season', is_company_year_closed: false, first_captured_company_year: 2000, is_partial_first_season: true, first_reportable_month: 3, statements_expected: 5, statements_kept: 2, missing_statement_months: '5,6,7', has_later_statement: false, has_kept_month_after_gap: false}
+        - {park_id: 'park_a', company_year: 2001, close_status: 'open', is_company_year_closed: false, first_captured_company_year: 2000, is_partial_first_season: false, first_reportable_month: 0, statements_expected: 8, statements_kept: 1, missing_statement_months: '1,2,3,4,5,6,7', has_later_statement: false, has_kept_month_after_gap: false}
+        - {park_id: 'park_b', company_year: 2001, close_status: 'open', is_company_year_closed: false, first_captured_company_year: 2000, is_partial_first_season: false, first_reportable_month: 0, statements_expected: 8, statements_kept: 0, missing_statement_months: '0,1,2,3,4,5,6,7', has_later_statement: false, has_kept_month_after_gap: false}
+        - {park_id: 'park_c', company_year: 2001, close_status: 'open', is_company_year_closed: false, first_captured_company_year: 2000, is_partial_first_season: false, first_reportable_month: 0, statements_expected: 8, statements_kept: 0, missing_statement_months: '0,1,2,3,4,5,6,7', has_later_statement: false, has_kept_month_after_gap: false}
+
+  - name: int_park_years__year_close_does_not_excuse_a_lost_first_statement
+    description: >-
+      It proves that a park whose first captured day is in game month 0 is a full season, so a lost month 0 statement
+      makes its year incomplete and is not a partial first season, even when a later captured day exists.
+    model: int_park_years__year_close
+    given:
+      - input: ref('int_park_registry__current')
+        format: sql
+        rows: |
+          select cast('park_d' as varchar) as park_id, cast(2000 as integer) as company_start_year
+      - input: ref('int_park_years__registry_mapped')
+        format: sql
+        rows: |
+          select cast('park_d' as varchar) as park_id, cast(9 as integer) as game_year, cast(2000 as integer) as company_year
+          union all
+          select cast('park_d' as varchar), cast(10 as integer), cast(2001 as integer)
+      - input: ref('stg_park_snapshot')
+        format: sql
+        rows: |
+          select cast('park_d' as varchar) as park_id, cast(9 as integer) as game_year, cast(0 as integer) as game_month, cast(2 as integer) as game_day
+          union all
+          select cast('park_d' as varchar), cast(9 as integer), cast(1 as integer), cast(1 as integer)
+      - input: ref('fct_park_month')
+        format: sql
+        rows: |
+          select cast('park_d' as varchar) as park_id, cast(2000 as integer) as company_year, cast(1 as integer) as statement_month
+          union all
+          select cast('park_d' as varchar), cast(2000 as integer), cast(2 as integer)
+          union all
+          select cast('park_d' as varchar), cast(2000 as integer), cast(3 as integer)
+          union all
+          select cast('park_d' as varchar), cast(2000 as integer), cast(4 as integer)
+          union all
+          select cast('park_d' as varchar), cast(2000 as integer), cast(5 as integer)
+          union all
+          select cast('park_d' as varchar), cast(2000 as integer), cast(6 as integer)
+          union all
+          select cast('park_d' as varchar), cast(2000 as integer), cast(7 as integer)
+          union all
+          select cast('park_d' as varchar), cast(2001 as integer), cast(0 as integer)
+    expect:
+      rows:
+        - {park_id: 'park_d', company_year: 2000, close_status: 'incomplete', is_company_year_closed: false, first_captured_company_year: 2000, is_partial_first_season: false, first_reportable_month: 0, statements_expected: 8, statements_kept: 7, missing_statement_months: '0', has_later_statement: true}
+        - {park_id: 'park_d', company_year: 2001, close_status: 'open', is_company_year_closed: false, first_captured_company_year: 2000, is_partial_first_season: false, first_reportable_month: 0, statements_expected: 8, statements_kept: 1, missing_statement_months: '1,2,3,4,5,6,7', has_later_statement: false}
+
+  - name: int_park_years__year_close_adds_a_row_for_a_start_year_before_the_first_captured_day
+    description: >-
+      It proves that a registry start year earlier than the park's first captured day yields an incomplete row for the
+      earlier year with no statements and the first captured company year shown, while the later year can still close.
+    model: int_park_years__year_close
+    given:
+      - input: ref('int_park_registry__current')
+        format: sql
+        rows: |
+          select cast('park_e' as varchar) as park_id, cast(1999 as integer) as company_start_year
+      - input: ref('int_park_years__registry_mapped')
+        format: sql
+        rows: |
+          select cast('park_e' as varchar) as park_id, cast(9 as integer) as game_year, cast(2000 as integer) as company_year
+          union all
+          select cast('park_e' as varchar), cast(10 as integer), cast(2001 as integer)
+      - input: ref('stg_park_snapshot')
+        format: sql
+        rows: |
+          select cast('park_e' as varchar) as park_id, cast(9 as integer) as game_year, cast(0 as integer) as game_month, cast(1 as integer) as game_day
+      - input: ref('fct_park_month')
+        format: sql
+        rows: |
+          select cast('park_e' as varchar) as park_id, cast(2000 as integer) as company_year, cast(0 as integer) as statement_month
+          union all
+          select cast('park_e' as varchar), cast(2000 as integer), cast(1 as integer)
+          union all
+          select cast('park_e' as varchar), cast(2000 as integer), cast(2 as integer)
+          union all
+          select cast('park_e' as varchar), cast(2000 as integer), cast(3 as integer)
+          union all
+          select cast('park_e' as varchar), cast(2000 as integer), cast(4 as integer)
+          union all
+          select cast('park_e' as varchar), cast(2000 as integer), cast(5 as integer)
+          union all
+          select cast('park_e' as varchar), cast(2000 as integer), cast(6 as integer)
+          union all
+          select cast('park_e' as varchar), cast(2000 as integer), cast(7 as integer)
+          union all
+          select cast('park_e' as varchar), cast(2001 as integer), cast(0 as integer)
+    expect:
+      rows:
+        - {park_id: 'park_e', company_year: 1999, close_status: 'incomplete', is_company_year_closed: false, first_captured_company_year: 2000, is_partial_first_season: false, first_reportable_month: 0, statements_expected: 8, statements_kept: 0, missing_statement_months: '0,1,2,3,4,5,6,7', has_later_statement: true}
+        - {park_id: 'park_e', company_year: 2000, close_status: 'complete', is_company_year_closed: true, first_captured_company_year: 2000, is_partial_first_season: false, first_reportable_month: 0, statements_expected: 8, statements_kept: 8, missing_statement_months: '', has_later_statement: true}
+        - {park_id: 'park_e', company_year: 2001, close_status: 'open', is_company_year_closed: false, first_captured_company_year: 2000, is_partial_first_season: false, first_reportable_month: 0, statements_expected: 8, statements_kept: 1, missing_statement_months: '1,2,3,4,5,6,7', has_later_statement: false}
+
+  - name: int_park_years__year_close_never_closes_on_partial_parks_alone
+    description: >-
+      It proves that a company year with only a partial first season park and no complete park does not close.
+    model: int_park_years__year_close
+    given:
+      - input: ref('int_park_registry__current')
+        format: sql
+        rows: |
+          select cast('park_f' as varchar) as park_id, cast(2000 as integer) as company_start_year
+      - input: ref('int_park_years__registry_mapped')
+        format: sql
+        rows: |
+          select cast('park_f' as varchar) as park_id, cast(9 as integer) as game_year, cast(2000 as integer) as company_year
+      - input: ref('stg_park_snapshot')
+        format: sql
+        rows: |
+          select cast('park_f' as varchar) as park_id, cast(9 as integer) as game_year, cast(2 as integer) as game_month, cast(2 as integer) as game_day
+      - input: ref('fct_park_month')
+        format: sql
+        rows: |
+          select cast('park_f' as varchar) as park_id, cast(2000 as integer) as company_year, cast(2 as integer) as statement_month
+          union all
+          select cast('park_f' as varchar), cast(2000 as integer), cast(3 as integer)
+          union all
+          select cast('park_f' as varchar), cast(2000 as integer), cast(4 as integer)
+          union all
+          select cast('park_f' as varchar), cast(2000 as integer), cast(5 as integer)
+          union all
+          select cast('park_f' as varchar), cast(2000 as integer), cast(6 as integer)
+          union all
+          select cast('park_f' as varchar), cast(2000 as integer), cast(7 as integer)
+    expect:
+      rows:
+        - {park_id: 'park_f', company_year: 2000, close_status: 'partial_first_season', is_company_year_closed: false, first_captured_company_year: 2000, is_partial_first_season: true, first_reportable_month: 2, statements_expected: 6, statements_kept: 6, missing_statement_months: '', has_later_statement: false}
+
+  - name: int_park_years__year_close_keeps_the_year_open_for_a_never_captured_park
+    description: >-
+      It proves that a registered park with no snapshot and no statement has open rows with a null first captured
+      company year, and that its open rows keep the company year from closing.
+    model: int_park_years__year_close
+    given:
+      - input: ref('int_park_registry__current')
+        format: sql
+        rows: |
+          select cast('park_a' as varchar) as park_id, cast(2000 as integer) as company_start_year
+          union all
+          select cast('park_g' as varchar), cast(2000 as integer)
+      - input: ref('int_park_years__registry_mapped')
+        format: sql
+        rows: |
+          select cast('park_a' as varchar) as park_id, cast(9 as integer) as game_year, cast(2000 as integer) as company_year
+          union all
+          select cast('park_a' as varchar), cast(10 as integer), cast(2001 as integer)
+      - input: ref('stg_park_snapshot')
+        format: sql
+        rows: |
+          select cast('park_a' as varchar) as park_id, cast(9 as integer) as game_year, cast(0 as integer) as game_month, cast(1 as integer) as game_day
+      - input: ref('fct_park_month')
+        format: sql
+        rows: |
+          select cast('park_a' as varchar) as park_id, cast(2000 as integer) as company_year, cast(0 as integer) as statement_month
+          union all
+          select cast('park_a' as varchar), cast(2000 as integer), cast(1 as integer)
+          union all
+          select cast('park_a' as varchar), cast(2000 as integer), cast(2 as integer)
+          union all
+          select cast('park_a' as varchar), cast(2000 as integer), cast(3 as integer)
+          union all
+          select cast('park_a' as varchar), cast(2000 as integer), cast(4 as integer)
+          union all
+          select cast('park_a' as varchar), cast(2000 as integer), cast(5 as integer)
+          union all
+          select cast('park_a' as varchar), cast(2000 as integer), cast(6 as integer)
+          union all
+          select cast('park_a' as varchar), cast(2000 as integer), cast(7 as integer)
+          union all
+          select cast('park_a' as varchar), cast(2001 as integer), cast(0 as integer)
+    expect:
+      rows:
+        - {park_id: 'park_a', company_year: 2000, close_status: 'complete', is_company_year_closed: false, first_captured_company_year: 2000, is_partial_first_season: false, first_reportable_month: 0, statements_expected: 8, statements_kept: 8, missing_statement_months: '', has_later_statement: true}
+        - {park_id: 'park_g', company_year: 2000, close_status: 'open', is_company_year_closed: false, first_captured_company_year: null, is_partial_first_season: false, first_reportable_month: 0, statements_expected: 8, statements_kept: 0, missing_statement_months: '0,1,2,3,4,5,6,7', has_later_statement: false}
+        - {park_id: 'park_a', company_year: 2001, close_status: 'open', is_company_year_closed: false, first_captured_company_year: 2000, is_partial_first_season: false, first_reportable_month: 0, statements_expected: 8, statements_kept: 1, missing_statement_months: '1,2,3,4,5,6,7', has_later_statement: false}
+        - {park_id: 'park_g', company_year: 2001, close_status: 'open', is_company_year_closed: false, first_captured_company_year: null, is_partial_first_season: false, first_reportable_month: 0, statements_expected: 8, statements_kept: 0, missing_statement_months: '0,1,2,3,4,5,6,7', has_later_statement: false}
+
+  - name: int_park_years__year_close_marks_a_gap_before_a_kept_month_incomplete_in_the_same_year
+    description: >-
+      It proves that, with no statement in a later year, a park missing month 2 while months 3 and 4 are kept is
+      incomplete in the same company year, while a park whose only missing months come after its last kept month is
+      open, and that the company year does not close.
+    model: int_park_years__year_close
+    given:
+      - input: ref('int_park_registry__current')
+        format: sql
+        rows: |
+          select cast('park_n' as varchar) as park_id, cast(2000 as integer) as company_start_year
+          union all
+          select cast('park_o' as varchar), cast(2000 as integer)
+      - input: ref('int_park_years__registry_mapped')
+        format: sql
+        rows: |
+          select cast('park_n' as varchar) as park_id, cast(9 as integer) as game_year, cast(2000 as integer) as company_year
+          union all
+          select cast('park_o' as varchar), cast(9 as integer), cast(2000 as integer)
+      - input: ref('stg_park_snapshot')
+        format: sql
+        rows: |
+          select cast('park_n' as varchar) as park_id, cast(9 as integer) as game_year, cast(0 as integer) as game_month, cast(1 as integer) as game_day
+          union all
+          select cast('park_o' as varchar), cast(9 as integer), cast(0 as integer), cast(1 as integer)
+      - input: ref('fct_park_month')
+        format: sql
+        rows: |
+          select cast('park_n' as varchar) as park_id, cast(2000 as integer) as company_year, cast(m as integer) as statement_month
+          from generate_series(0, 4) as months (m)
+          where m <> 2
+          union all
+          select cast('park_o' as varchar), cast(2000 as integer), cast(m as integer)
+          from generate_series(0, 4) as months (m)
+    expect:
+      rows:
+        - {park_id: 'park_n', company_year: 2000, close_status: 'incomplete', is_company_year_closed: false, first_captured_company_year: 2000, is_partial_first_season: false, first_reportable_month: 0, statements_expected: 8, statements_kept: 4, missing_statement_months: '2,5,6,7', has_later_statement: false, has_kept_month_after_gap: true}
+        - {park_id: 'park_o', company_year: 2000, close_status: 'open', is_company_year_closed: false, first_captured_company_year: 2000, is_partial_first_season: false, first_reportable_month: 0, statements_expected: 8, statements_kept: 5, missing_statement_months: '5,6,7', has_later_statement: false, has_kept_month_after_gap: false}
+
+  - name: int_park_years__year_close_keeps_a_partial_first_season_partial_despite_a_gap
+    description: >-
+      It proves that a partial first season with a missing month before a kept month stays partial_first_season
+      rather than becoming incomplete, while has_kept_month_after_gap still reads true; a second park with a plain full year is complete beside it.
+    model: int_park_years__year_close
+    given:
+      - input: ref('int_park_registry__current')
+        format: sql
+        rows: |
+          select cast('park_q' as varchar) as park_id, cast(2000 as integer) as company_start_year
+          union all
+          select cast('park_r' as varchar), cast(2000 as integer)
+      - input: ref('int_park_years__registry_mapped')
+        format: sql
+        rows: |
+          select cast('park_q' as varchar) as park_id, cast(9 as integer) as game_year, cast(2000 as integer) as company_year
+          union all
+          select cast('park_r' as varchar), cast(10 as integer), cast(2000 as integer)
+      - input: ref('stg_park_snapshot')
+        format: sql
+        rows: |
+          select cast('park_q' as varchar) as park_id, cast(9 as integer) as game_year, cast(3 as integer) as game_month, cast(2 as integer) as game_day
+          union all
+          select cast('park_r' as varchar), cast(10 as integer), cast(0 as integer), cast(1 as integer)
+      - input: ref('fct_park_month')
+        format: sql
+        rows: |
+          select cast('park_q' as varchar) as park_id, cast(2000 as integer) as company_year, cast(m as integer) as statement_month
+          from generate_series(3, 5) as months (m)
+          where m <> 4
+          union all
+          select cast('park_r' as varchar), cast(2000 as integer), cast(m as integer)
+          from generate_series(0, 7) as months (m)
+    expect:
+      rows:
+        - {park_id: 'park_q', company_year: 2000, close_status: 'partial_first_season', is_company_year_closed: true, first_captured_company_year: 2000, is_partial_first_season: true, first_reportable_month: 3, statements_expected: 5, statements_kept: 2, missing_statement_months: '4,6,7', has_later_statement: false, has_kept_month_after_gap: true}
+        - {park_id: 'park_r', company_year: 2000, close_status: 'complete', is_company_year_closed: true, first_captured_company_year: 2000, is_partial_first_season: false, first_reportable_month: 0, statements_expected: 8, statements_kept: 8, missing_statement_months: '', has_later_statement: false, has_kept_month_after_gap: false}

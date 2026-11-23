@@ -1,0 +1,115 @@
+apiVersion: v3.2.0
+kind: DataContract
+id: guest_boarded
+name: guest_boarded
+version: 1.8.0
+status: active
+description:
+  purpose: One event per new boarder a seat poll found, with the guest's readings at that poll.
+servers:
+  - server: parquet_through_duckdb
+    type: duckdb
+    database: __DATABASE__
+    schema: main
+schema:
+  - name: guest_boarded
+    physicalType: view
+    description: >-
+      One row per guest a seat poll found newly seated on a ride, sent by plugin 0.4.0 and later; every reading
+      is taken at that poll. The data is Parquet (v1/guest_boarded.parquet), checked through a throwaway DuckDB
+      view. A poll compares each car seat with the previous poll and records a guest only when the seat's
+      guest ID changed, because the game keeps a guest's ID in a seat after the guest leaves, until another guest
+      takes that seat; an unchanged leftover listing is never recorded as a boarding. Capture limit: a boarding
+      is recorded only when the guest is seated at a poll, so a boarding that starts and ends between two polls
+      (under 20 ticks) is missed, and so is any boarding where a seat lists the same guest at both polls (for
+      example the guest re-takes the seat that still lists them, or guest X, then Y, then X again sit in one seat
+      between two polls); rides with no cars record none. Guests already
+      seated when a session starts are not recorded. The boarding happened in the 20 ticks before
+      detected_at_ticks. The game has no boarding hook and no amount-paid field.
+    properties:
+      - name: guest_id
+        logicalType: integer
+        physicalType: INTEGER
+        required: true
+        logicalTypeOptions:
+          minimum: 0
+        description: >-
+          The game's guest entity slot number, a whole number; the game reuses a slot, so it is not an identity
+          (use guest_key).
+      - name: guest_key
+        logicalType: integer
+        physicalType: INTEGER
+        required: false
+        logicalTypeOptions:
+          minimum: 1
+        description: >-
+          The guest's key in the known-guest table at the poll; null when the guest's slot is not in the table.
+          A whole number, no unit.
+      - name: ride_id
+        logicalType: integer
+        physicalType: INTEGER
+        required: true
+        logicalTypeOptions:
+          minimum: 0
+        description: >-
+          The ride the guest boarded, a whole number: the seat's car ride slot number. The game reuses a ride
+          slot after a ride is demolished.
+      - name: detected_at_ticks
+        logicalType: integer
+        physicalType: BIGINT
+        required: true
+        logicalTypeOptions:
+          minimum: 0
+        description: >-
+          Game tick of the seat poll that found the guest seated, in game ticks (game clock). The boarding
+          happened in the 20 ticks before it.
+      - name: ride_price_listed_tenths
+        logicalType: integer
+        physicalType: BIGINT
+        required: false
+        description: >-
+          The ride's listed admission price at the poll (its first price), in tenths of a dollar (game money
+          unit); not the amount the guest was charged, because a voucher or a price change between the charge
+          and the poll makes them differ. Null when the ride is gone or has no price.
+      - name: happiness
+        logicalType: integer
+        physicalType: INTEGER
+        required: false
+        logicalTypeOptions:
+          minimum: 0
+          maximum: 255
+        description: >-
+          Guest happiness at the poll, 0 to 255; a game unit, no other unit.
+      - name: min_intensity
+        logicalType: integer
+        physicalType: INTEGER
+        required: false
+        logicalTypeOptions:
+          minimum: 0
+          maximum: 15
+        description: >-
+          The guest's preferred minimum ride intensity at the poll, 0 to 15; a game unit, no other unit.
+      - name: max_intensity
+        logicalType: integer
+        physicalType: INTEGER
+        required: false
+        logicalTypeOptions:
+          minimum: 0
+          maximum: 15
+        description: >-
+          The guest's preferred maximum ride intensity at the poll, 0 to 15; a game unit, no other unit.
+      - name: nausea_tolerance
+        logicalType: integer
+        physicalType: INTEGER
+        required: false
+        logicalTypeOptions:
+          minimum: 0
+          maximum: 3
+        description: >-
+          The guest's nausea tolerance at the poll, 0 to 3; a game unit, no other unit.
+      - name: guest_cash_tenths
+        logicalType: integer
+        physicalType: BIGINT
+        required: false
+        description: >-
+          The guest's cash at the poll, after paying, in tenths of a dollar (game money unit).

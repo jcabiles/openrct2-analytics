@@ -1,0 +1,28 @@
+{%- from "figure.njk" import figure as region -%}
+{%- from "panel-table.njk" import panelTable -%}
+<div class="dnote">{{ region("note-attr" | figure(exports), "div", "p") }}</div>
+<p class="alead">{% passage "the-analytics-strategy.md", "attr-lead", "inline" %}</p>
+{%- set panels = [
+  { id: "attr-rating", desc: true, note: "riders-note" },
+  { id: "attr-age", desc: true },
+  { id: "attr-types", desc: false },
+  { id: "attr-scatter", desc: true },
+  { id: "attr-table", desc: false }
+] %}
+{%- for panel in panels %}
+<div class="panel">
+  {%- set fig = panel.id | figure(exports) %}
+  {%- if fig.cells %}
+  {% call region(fig) %}{{ panelTable(fig) }}{% endcall %}
+  {%- else %}
+  {{ region(fig) }}
+  {%- endif %}
+  {%- if panel.desc %}
+  <p class="cap">{% passage "the-analytics-strategy.md", panel.id + "-desc", "inline" %}</p>
+  {%- endif %}
+  {%- if panel.note %}
+  <p class="cap">{% passage "the-analytics-strategy.md", panel.note, "inline" %}</p>
+  {%- endif %}
+</div>
+{%- endfor %}
+<p class="fine"><span class="tag later">After v1</span> {% passage "the-analytics-strategy.md", "attr-later", "inline" %}</p>
