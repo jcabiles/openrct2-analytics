@@ -89,7 +89,7 @@ def test_no_font_or_image_file_is_added() -> None:
         and path.suffix.lower() in FONT_AND_IMAGE_SUFFIXES
         and not EXCLUDED_DIRS & set(path.relative_to(SITE).parts)
     )
-    assert found == ["assets/favicon.svg"]
+    assert found == ["assets/favicon.svg", "assets/img/openrct2-title.webp"]
 
 
 def _max_width_px(value: str) -> float:

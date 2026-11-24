@@ -16,6 +16,12 @@ OpenRCT2, the open-source RollerCoaster Tycoon, treated as the daily business of
 <!-- passage: scene-title -->
 A drawn theme park streaming its game events
 
+<!-- passage: title-art-alt -->
+The OpenRCT2 logo, a striped helter-skelter tower beside the words "Open RCT2", over a pink park scene from the game.
+
+<!-- passage: title-art-caption -->
+OpenRCT2 title screen
+
 <!-- passage: scene-desc -->
 Guests walk through the gate to a wooden roller coaster, a carousel, a log flume and two stalls. Gold dots, one per game event, rise from the gate, the rides, the stalls and the park office, gather at the plugin and drop underground into the data pipeline.
 
@@ -44,6 +50,6 @@ How it was built
 Business insights
 
 <!-- passage: footer -->
-Every result is observational. The project is unaffiliated with OpenRCT2 or the RollerCoaster Tycoon owners and holds no game files.
+Every result is observational. The project is unaffiliated with OpenRCT2 or the RollerCoaster Tycoon owners and holds no game files apart from that one image.
 
-The tickets, the park scene and the guilloche pattern are original drawings; no game art, sprites or logos are used. Footage is coming soon.
+The OpenRCT2 title screen at the top of the page is a capture of the game, shown to identify it. The tickets, the park scene and the guilloche pattern are original drawings. Footage is coming soon.

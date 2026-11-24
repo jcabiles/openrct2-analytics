@@ -66,6 +66,7 @@ export default function (eleventyConfig) {
     "node_modules/@observablehq/plot/dist/plot.umd.min.js": "assets/vendor/plot.umd.min.js",
     "site/assets/park-month-chart.mjs": "assets/park-month-chart.mjs",
     "site/assets/favicon.svg": "assets/favicon.svg",
+    "site/assets/img": "assets/img",
     "site/assets/css": "assets/css",
     "site/assets/js": "assets/js",
   });

@@ -15,7 +15,7 @@ invariants:
   - Raw captures are append-only; every fix happens downstream in dbt. The one exception: before go-live, `make delete-company-data` archives and then rewrites or removes company raw captures and registry deliveries (ADR 0033).
   - Money stays in the game's tenths of a dollar until one staging conversion; every metric names its unit and its clock (game day, company date, or wall-clock hour).
   - Build previews and client-side predictions never count as player actions.
-  - Never commit RollerCoaster Tycoon files, game screenshots or video frames, the GPL type definitions, or private machine paths. Game footage lives on a video hosting site and the site links to it (ADR 0047).
+  - Never commit RollerCoaster Tycoon files, game screenshots or video frames, the GPL type definitions, or private machine paths. Game footage lives on a video hosting site and the site links to it (ADR 0047). The one committed game image is the OpenRCT2 title screen in the page header (ADR 0061).
   - The contract is versioned: adding fields is a minor bump; a breaking change is a major bump and a new landing path.
   - Analyses state their sample (parks, players) and say "observational" unless an experiment design backs a causal claim.
   - The plugin compiles to ES5 and stays within its measured per-tick cost budget.

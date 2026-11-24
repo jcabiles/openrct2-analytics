@@ -682,7 +682,7 @@ The game's behavior and the pinned tools' behavior, with sources, are in `docs/a
   `site/_includes/` and one figure macro (`figure.njk`); the figure registry `site/figures.mjs` (with a file per
   section in `site/figures/`), which gives every figure region its sentences, unit line and live or pending state;
   `site/eleventy.config.mjs` (the story-passage shortcode, the contract count and version, and passthrough of the
-  stylesheets in `site/assets/css/` and the modules in `site/assets/js/`); shared modules under `site/assets/js/`
+  stylesheets in `site/assets/css/`, the title image in `site/assets/img/` and the modules in `site/assets/js/`); shared modules under `site/assets/js/`
   (`boot`, `data`, `dom`, `motion`, `chart-style`, `nav`, `hero-scene`) that only draw and wire controls, and `site/assets/js/rows/park-month.mjs`, `site/assets/js/rows/story.mjs` and `site/assets/js/rows/insights.mjs`, pure row functions (no DOM); one module per section that draws it (`story`, `insights`, `finance`, `crew`, `extract-roll`, `infra-track`);
   `site/assets/park-month-chart.mjs`; the prose of the page in `docs/showcase/story/` as named passages
   (ADR 0043); the export allowlist `site/exports.toml` and the seven committed exports in `site/_data/` (`park_month.json`, `park_year.json`, `company_year.json`,
@@ -694,6 +694,8 @@ The game's behavior and the pinned tools' behavior, with sources, are in `docs/a
   (ADR 0060): an `<a href>` to the public repository, its author's profile or a file under the
   repository's main branch. The public preview links to its own repository and its author's
   profile; it still loads nothing from another host.
+  The page header shows one game image, the OpenRCT2 title screen in `site/assets/img/` (ADR 0061);
+  every other image on the page is an original drawing.
 - `docs/showcase/` — `docs/showcase/story/` and `trace-operating-profit.md` (follows one month's operating profit from the page
   back to the game event).
 - `metrics/finance.yml`, `metrics/admissions.yml` and `metrics/ride_operations.yml` — the metric catalog, split by
